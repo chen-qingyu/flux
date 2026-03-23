@@ -11,7 +11,7 @@
                 <camunda:properties>
                     <camunda:property name="_initiatorType" value="static" />
                     <camunda:property name="_entityCount" value="3" />
-                    <camunda:property name="_entityName" value="customer" />
+                    <camunda:property name="_entityType" value="customer" />
                     <camunda:property name="_staticInterval" value="10" />
                 </camunda:properties>
             </bpmn:extensionElements>

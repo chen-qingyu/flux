@@ -1,0 +1,5 @@
+time,resource_id,resource_name,change_type,in_use,available,queue_length,entity_id,task_id,details_json
+0,DataStoreReference_clerk,柜员,allocate,1,0,0,ALL发生器_case_0,Task_service,"{""wait_time"":0,""entity_id"":""ALL发生器_case_0""}"
+0,DataStoreReference_pc,电脑,allocate,1,0,0,ALL发生器_case_0,Task_service,"{""wait_time"":0,""entity_id"":""ALL发生器_case_0""}"
+4,DataStoreReference_clerk,柜员,release,0,1,0,ALL发生器_case_0,Task_service,"{""entity_id"":""ALL发生器_case_0""}"
+4,DataStoreReference_pc,电脑,release,0,1,0,ALL发生器_case_0,Task_service,"{""entity_id"":""ALL发生器_case_0""}"

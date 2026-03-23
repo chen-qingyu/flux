@@ -1,0 +1,6 @@
+time,entity_id,entity_type,node_id,node_name,node_type,event_type,resource_snapshot,details_json
+0,ALL发生器_case_0,case,Event_start,ALL发生器,start_event,entity_generated,{},"{""generator"":""ALL发生器"",""entity_type"":""case""}"
+0,ALL发生器_case_0,case,Task_service,全部资源服务,task,task_arrive,"{""requested"":[""柜员"",""电脑""],""allocated"":[],""queue_lengths"":{""柜员"":0,""电脑"":0}}","{""requested_resources"":[""柜员"",""电脑""],""resource_strategy"":""all""}"
+0,ALL发生器_case_0,case,Task_service,全部资源服务,task,task_start,"{""requested"":[""柜员"",""电脑""],""allocated"":[""柜员"",""电脑""],""queue_lengths"":{""柜员"":0,""电脑"":0}}","{""wait_time"":0,""duration"":4,""allocated_resources"":[""柜员"",""电脑""]}"
+4,ALL发生器_case_0,case,Task_service,全部资源服务,task,task_finish,"{""requested"":[""柜员"",""电脑""],""allocated"":[""柜员"",""电脑""],""queue_lengths"":{""柜员"":0,""电脑"":0}}","{""processing_time"":4,""allocated_resources"":[""柜员"",""电脑""]}"
+4,ALL发生器_case_0,case,Event_end,结束,end_event,entity_exit,{},"{""lifetime"":4}"

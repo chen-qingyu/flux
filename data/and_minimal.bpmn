@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+    xmlns:camunda="http://camunda.org/schema/1.0/bpmn"
+    id="Definitions_And_Minimal"
+    targetNamespace="http://bpmn.io/schema/bpmn">
+    <bpmn:process id="Process_and_minimal" name="AND 最小流程" isExecutable="true">
+        <bpmn:startEvent id="Event_start" name="AND发生器">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_initiatorType" value="static" />
+                    <camunda:property name="_entityCount" value="1" />
+                    <camunda:property name="_entityType" value="job" />
+                    <camunda:property name="_staticInterval" value="1" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:outgoing>Flow_start_to_fork</bpmn:outgoing>
+        </bpmn:startEvent>
+        <bpmn:parallelGateway id="Gateway_fork" name="并行分叉">
+            <bpmn:incoming>Flow_start_to_fork</bpmn:incoming>
+            <bpmn:outgoing>Flow_fork_to_a</bpmn:outgoing>
+            <bpmn:outgoing>Flow_fork_to_b</bpmn:outgoing>
+        </bpmn:parallelGateway>
+        <bpmn:task id="Task_a" name="并行任务A">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_taskType" value="delay" />
+                    <camunda:property name="_distributionType" value="static" />
+                    <camunda:property name="_staticInterval" value="3" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:incoming>Flow_fork_to_a</bpmn:incoming>
+            <bpmn:outgoing>Flow_a_to_join</bpmn:outgoing>
+        </bpmn:task>
+        <bpmn:task id="Task_b" name="并行任务B">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_taskType" value="delay" />
+                    <camunda:property name="_distributionType" value="static" />
+                    <camunda:property name="_staticInterval" value="5" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:incoming>Flow_fork_to_b</bpmn:incoming>
+            <bpmn:outgoing>Flow_b_to_join</bpmn:outgoing>
+        </bpmn:task>
+        <bpmn:parallelGateway id="Gateway_join" name="并行汇合">
+            <bpmn:incoming>Flow_a_to_join</bpmn:incoming>
+            <bpmn:incoming>Flow_b_to_join</bpmn:incoming>
+            <bpmn:outgoing>Flow_join_to_end</bpmn:outgoing>
+        </bpmn:parallelGateway>
+        <bpmn:endEvent id="Event_end" name="结束">
+            <bpmn:incoming>Flow_join_to_end</bpmn:incoming>
+        </bpmn:endEvent>
+        <bpmn:sequenceFlow id="Flow_start_to_fork" sourceRef="Event_start" targetRef="Gateway_fork" />
+        <bpmn:sequenceFlow id="Flow_fork_to_a" sourceRef="Gateway_fork" targetRef="Task_a" />
+        <bpmn:sequenceFlow id="Flow_fork_to_b" sourceRef="Gateway_fork" targetRef="Task_b" />
+        <bpmn:sequenceFlow id="Flow_a_to_join" sourceRef="Task_a" targetRef="Gateway_join" />
+        <bpmn:sequenceFlow id="Flow_b_to_join" sourceRef="Task_b" targetRef="Gateway_join" />
+        <bpmn:sequenceFlow id="Flow_join_to_end" sourceRef="Gateway_join" targetRef="Event_end" />
+    </bpmn:process>
+</bpmn:definitions>

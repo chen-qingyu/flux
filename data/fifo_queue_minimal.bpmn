@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+    xmlns:camunda="http://camunda.org/schema/1.0/bpmn"
+    id="Definitions_Fifo_Queue_Minimal"
+    targetNamespace="http://bpmn.io/schema/bpmn">
+    <bpmn:process id="Process_fifo_queue_minimal" name="FIFO 队列最小流程" isExecutable="true">
+        <bpmn:startEvent id="Event_start" name="FIFO发生器">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_initiatorType" value="static" />
+                    <camunda:property name="_entityCount" value="3" />
+                    <camunda:property name="_entityType" value="customer" />
+                    <camunda:property name="_staticInterval" value="1" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:outgoing>Flow_start_to_task</bpmn:outgoing>
+        </bpmn:startEvent>
+        <bpmn:task id="Task_service" name="FIFO服务">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_taskType" value="delay" />
+                    <camunda:property name="_resourceStrategy" value="all" />
+                    <camunda:property name="_distributionType" value="static" />
+                    <camunda:property name="_staticInterval" value="4" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:incoming>Flow_start_to_task</bpmn:incoming>
+            <bpmn:outgoing>Flow_task_to_end</bpmn:outgoing>
+        </bpmn:task>
+        <bpmn:dataStoreReference id="DataStoreReference_counter" name="窗口">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_resourceType" value="resource" />
+                    <camunda:property name="_capacity" value="1" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+        </bpmn:dataStoreReference>
+        <bpmn:endEvent id="Event_end" name="结束">
+            <bpmn:incoming>Flow_task_to_end</bpmn:incoming>
+        </bpmn:endEvent>
+        <bpmn:sequenceFlow id="Flow_start_to_task" sourceRef="Event_start" targetRef="Task_service" />
+        <bpmn:sequenceFlow id="Flow_task_to_end" sourceRef="Task_service" targetRef="Event_end" />
+        <bpmn:association id="Association_task_counter" associationDirection="Both" sourceRef="Task_service" targetRef="DataStoreReference_counter" />
+    </bpmn:process>
+</bpmn:definitions>

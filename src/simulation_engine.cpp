@@ -66,27 +66,6 @@ struct PendingTaskRequest
     double arrival_time{0.0};
 };
 
-struct ScheduledEvent
-{
-    double time{0.0};
-    std::uint64_t order{0};
-    ScheduledEventType type{ScheduledEventType::GenerateEntity};
-    std::string node_id;
-    entt::entity token{entt::null};
-};
-
-struct ScheduledEventCompare
-{
-    bool operator()(const ScheduledEvent& left, const ScheduledEvent& right) const
-    {
-        if (left.time != right.time)
-        {
-            return left.time > right.time;
-        }
-        return left.order > right.order;
-    }
-};
-
 struct JoinBarrierState
 {
     std::vector<entt::entity> waiting_tokens;
@@ -153,10 +132,21 @@ private:
     std::mt19937_64 generator_;
 };
 
-class RuntimeContext
+} // namespace
+
+struct SimulationEngine::ScheduledEvent
+{
+    double time{0.0};
+    std::uint64_t order{0};
+    ScheduledEventType type{ScheduledEventType::GenerateEntity};
+    std::string node_id;
+    entt::entity token{entt::null};
+};
+
+class SimulationEngine::RunState
 {
 public:
-    RuntimeContext(const SimulationModel& model, SimulationResult& result, std::uint64_t seed)
+    RunState(const SimulationModel& model, SimulationResult& result, std::uint64_t seed)
         : model_(model)
         , result_(result)
         , sampler_(seed)
@@ -260,6 +250,16 @@ public:
     [[nodiscard]] const SimulationModel& model() const
     {
         return model_;
+    }
+
+    void increment_generated_entities()
+    {
+        ++result_.generated_entities;
+    }
+
+    void increment_completed_entities()
+    {
+        ++result_.completed_entities;
     }
 
     [[nodiscard]] entt::registry& registry()
@@ -455,6 +455,18 @@ public:
     }
 
 private:
+    struct ScheduledEventCompare
+    {
+        bool operator()(const ScheduledEvent& left, const ScheduledEvent& right) const
+        {
+            if (left.time != right.time)
+            {
+                return left.time > right.time;
+            }
+            return left.order > right.order;
+        }
+    };
+
     void initialize_resources()
     {
         for (const auto& [resource_id, definition] : model_.resources)
@@ -515,217 +527,216 @@ private:
     std::size_t business_sequence_{0};
 };
 
-} // namespace
-
 SimulationResult SimulationEngine::run(const SimulationModel& model, const SimulationOptions& options)
 {
     SimulationResult result;
-    RuntimeContext context(model, result, options.seed);
+    RunState state(model, result, options.seed);
 
-    auto schedule_outgoing = [&](entt::entity token, const std::string& node_id, double time)
+    schedule_start_events(state);
+
+    while (state.has_events())
     {
-        const auto found = model.outgoing.find(node_id);
-        if (found == model.outgoing.end())
-        {
-            return;
-        }
-        for (const auto& target_id : found->second)
-        {
-            context.schedule(ScheduledEvent{time, context.next_order(), ScheduledEventType::ArriveNode, target_id, token});
-        }
-    };
+        const auto event = state.next_event();
+        process_event(state, event);
+    }
 
-    auto handle_parallel_gateway = [&](const ScheduledEvent& event)
+    state.finalize_resources(result.simulation_horizon);
+    return result;
+}
+
+void SimulationEngine::schedule_start_events(RunState& state) const
+{
+    for (const auto& start_id : state.model().start_node_ids)
     {
-        if (!context.token_valid(event.token))
-        {
-            return;
-        }
-
-        const auto& node = model.node(event.node_id);
-        const auto token_component = context.token(event.token);
-        const auto incoming_count = model.incoming.contains(node.id) ? model.incoming.at(node.id).size() : 0U;
-        const auto outgoing_count = model.outgoing.contains(node.id) ? model.outgoing.at(node.id).size() : 0U;
-
-        auto continue_from_token = [&](entt::entity token_entity)
-        {
-            if (outgoing_count == 0)
-            {
-                return;
-            }
-
-            if (outgoing_count == 1)
-            {
-                context.schedule(ScheduledEvent{event.time, context.next_order(), ScheduledEventType::ArriveNode, model.outgoing.at(node.id).front(), token_entity});
-                return;
-            }
-
-            const auto barrier_token = context.token(token_entity);
-            context.log_event(
-                event.time,
-                barrier_token,
-                node,
-                "gateway_fork");
-
-            int branch_index = 0;
-            for (const auto& target_id : model.outgoing.at(node.id))
-            {
-                const auto child_token_id = barrier_token.token_id + ".p" + std::to_string(branch_index++);
-                const auto child_token = context.create_token(barrier_token.entity_id, barrier_token.entity_type, child_token_id, barrier_token.created_at);
-                context.schedule(ScheduledEvent{event.time, context.next_order(), ScheduledEventType::ArriveNode, target_id, child_token});
-            }
-            context.destroy_token(token_entity);
-        };
-
-        if (incoming_count > 1)
-        {
-            auto& barrier = context.join_barriers()[join_key(token_component.entity_id, node.id)];
-            barrier.waiting_tokens.push_back(event.token);
-            if (barrier.waiting_tokens.size() < incoming_count)
-            {
-                context.log_event(
-                    event.time,
-                    token_component,
-                    node,
-                    "gateway_join_wait");
-                return;
-            }
-
-            const auto merged_token = context.create_token(token_component.entity_id, token_component.entity_type, token_component.token_id + ".joined", token_component.created_at);
-            for (const auto waiting_token : barrier.waiting_tokens)
-            {
-                context.destroy_token(waiting_token);
-            }
-            barrier.waiting_tokens.clear();
-            context.join_barriers().erase(join_key(token_component.entity_id, node.id));
-
-            context.log_event(
-                event.time,
-                context.token(merged_token),
-                node,
-                "gateway_join_complete");
-
-            continue_from_token(merged_token);
-            return;
-        }
-
-        continue_from_token(event.token);
-    };
-
-    auto handle_arrival = [&](const ScheduledEvent& event)
-    {
-        if (!context.token_valid(event.token))
-        {
-            return;
-        }
-
-        const auto& node = model.node(event.node_id);
-        const auto token_component = context.token(event.token);
-
-        if (node.type == NodeType::Task)
-        {
-            const auto requested_resources = context.task_resources(node.id);
-            context.log_event(event.time, token_component, node, "task_arrive");
-
-            const auto allocation = context.allocate_resources_if_possible(node.id, node.task->resource_strategy);
-            if (!requested_resources.empty() && allocation.empty())
-            {
-                context.enqueue_request(PendingTaskRequest{context.next_order(), event.token, node.id, event.time});
-                context.log_event(event.time, token_component, node, "task_waiting_for_resources");
-                return;
-            }
-
-            context.start_task(event.token, node, event.time, allocation, 0.0);
-            return;
-        }
-
-        if (node.type == NodeType::EndEvent)
-        {
-            context.log_event(
-                event.time,
-                token_component,
-                node,
-                "entity_exit");
-            ++result.completed_entities;
-            context.destroy_token(event.token);
-            return;
-        }
-
-        if (node.type == NodeType::ExclusiveGateway)
-        {
-            const auto& selected_target = model.outgoing.at(node.id).front();
-            context.log_event(event.time, token_component, node, "gateway_route");
-            context.schedule(ScheduledEvent{event.time, context.next_order(), ScheduledEventType::ArriveNode, selected_target, event.token});
-            return;
-        }
-
-        if (node.type == NodeType::ParallelGateway)
-        {
-            handle_parallel_gateway(event);
-        }
-    };
-
-    auto handle_finish = [&](const ScheduledEvent& event)
-    {
-        if (!context.token_valid(event.token) || !context.registry().all_of<ActiveTask>(event.token))
-        {
-            return;
-        }
-
-        const auto& node = model.node(event.node_id);
-        const auto token_component = context.token(event.token);
-        const auto active_task = context.registry().get<ActiveTask>(event.token);
-        context.apply_release(active_task.allocated_resources, event.time, token_component.entity_id, node.id);
-        context.log_event(event.time, token_component, node, "task_finish");
-        context.registry().remove<ActiveTask>(event.token);
-        schedule_outgoing(event.token, node.id, event.time);
-        context.schedule(ScheduledEvent{event.time, context.next_order(), ScheduledEventType::ReevaluatePending, {}, entt::null});
-    };
-
-    for (const auto& start_id : model.start_node_ids)
-    {
-        const auto& start_node = model.node(start_id);
+        const auto& start_node = state.model().node(start_id);
         double next_time = 0.0;
         for (std::size_t index = 0; index < start_node.generator->entity_count; ++index)
         {
-            context.schedule(ScheduledEvent{next_time, context.next_order(), ScheduledEventType::GenerateEntity, start_id, entt::null});
+            state.schedule(ScheduledEvent{next_time, state.next_order(), ScheduledEventType::GenerateEntity, start_id, entt::null});
             if (index + 1 < start_node.generator->entity_count)
             {
-                next_time += context.sample_positive(start_node.generator->interval_distribution);
+                next_time += state.sample_positive(start_node.generator->interval_distribution);
             }
         }
     }
+}
 
-    while (context.has_events())
+void SimulationEngine::process_event(RunState& state, const ScheduledEvent& event) const
+{
+    switch (event.type)
     {
-        const auto event = context.next_event();
-        switch (event.type)
-        {
-            case ScheduledEventType::GenerateEntity:
-            {
-                const auto& start_node = model.node(event.node_id);
-                const auto entity_id = context.next_entity_id(start_node.name, start_node.generator->entity_type);
-                const auto token = context.create_token(entity_id, start_node.generator->entity_type, entity_id + ".t0", event.time);
-                const auto token_component = context.token(token);
-                ++result.generated_entities;
-                context.log_event(event.time, token_component, start_node, "entity_generated");
-                schedule_outgoing(token, start_node.id, event.time);
-                break;
-            }
-            case ScheduledEventType::ArriveNode:
-                handle_arrival(event);
-                break;
-            case ScheduledEventType::FinishTask:
-                handle_finish(event);
-                break;
-            case ScheduledEventType::ReevaluatePending:
-                context.reevaluate_pending(event.time);
-                break;
-        }
+        case ScheduledEventType::GenerateEntity:
+            handle_generate_entity(state, event);
+            break;
+        case ScheduledEventType::ArriveNode:
+            handle_arrive_node(state, event);
+            break;
+        case ScheduledEventType::FinishTask:
+            handle_finish_task(state, event);
+            break;
+        case ScheduledEventType::ReevaluatePending:
+            state.reevaluate_pending(event.time);
+            break;
+    }
+}
+
+void SimulationEngine::handle_generate_entity(RunState& state, const ScheduledEvent& event) const
+{
+    const auto& start_node = state.model().node(event.node_id);
+    const auto entity_id = state.next_entity_id(start_node.name, start_node.generator->entity_type);
+    const auto token = state.create_token(entity_id, start_node.generator->entity_type, entity_id + ".t0", event.time);
+    const auto token_component = state.token(token);
+    state.increment_generated_entities();
+    state.log_event(event.time, token_component, start_node, "entity_generated");
+
+    const auto found = state.model().outgoing.find(start_node.id);
+    if (found == state.model().outgoing.end())
+    {
+        return;
+    }
+    for (const auto& target_id : found->second)
+    {
+        state.schedule(ScheduledEvent{event.time, state.next_order(), ScheduledEventType::ArriveNode, target_id, token});
+    }
+}
+
+void SimulationEngine::handle_arrive_node(RunState& state, const ScheduledEvent& event) const
+{
+    if (!state.token_valid(event.token))
+    {
+        return;
     }
 
-    context.finalize_resources(result.simulation_horizon);
-    return result;
+    const auto& node = state.model().node(event.node_id);
+    const auto token_component = state.token(event.token);
+
+    if (node.type == NodeType::Task)
+    {
+        const auto requested_resources = state.task_resources(node.id);
+        state.log_event(event.time, token_component, node, "task_arrive");
+
+        const auto allocation = state.allocate_resources_if_possible(node.id, node.task->resource_strategy);
+        if (!requested_resources.empty() && allocation.empty())
+        {
+            state.enqueue_request(PendingTaskRequest{state.next_order(), event.token, node.id, event.time});
+            state.log_event(event.time, token_component, node, "task_waiting_for_resources");
+            return;
+        }
+
+        state.start_task(event.token, node, event.time, allocation, 0.0);
+        return;
+    }
+
+    if (node.type == NodeType::EndEvent)
+    {
+        state.log_event(event.time, token_component, node, "entity_exit");
+        state.increment_completed_entities();
+        state.destroy_token(event.token);
+        return;
+    }
+
+    if (node.type == NodeType::ExclusiveGateway)
+    {
+        const auto& selected_target = state.model().outgoing.at(node.id).front();
+        state.log_event(event.time, token_component, node, "gateway_route");
+        state.schedule(ScheduledEvent{event.time, state.next_order(), ScheduledEventType::ArriveNode, selected_target, event.token});
+        return;
+    }
+
+    if (node.type == NodeType::ParallelGateway)
+    {
+        handle_parallel_gateway(state, event);
+    }
+}
+
+void SimulationEngine::handle_finish_task(RunState& state, const ScheduledEvent& event) const
+{
+    if (!state.token_valid(event.token) || !state.registry().all_of<ActiveTask>(event.token))
+    {
+        return;
+    }
+
+    const auto& node = state.model().node(event.node_id);
+    const auto token_component = state.token(event.token);
+    const auto active_task = state.registry().get<ActiveTask>(event.token);
+    state.apply_release(active_task.allocated_resources, event.time, token_component.entity_id, node.id);
+    state.log_event(event.time, token_component, node, "task_finish");
+    state.registry().remove<ActiveTask>(event.token);
+
+    const auto found = state.model().outgoing.find(node.id);
+    if (found != state.model().outgoing.end())
+    {
+        for (const auto& target_id : found->second)
+        {
+            state.schedule(ScheduledEvent{event.time, state.next_order(), ScheduledEventType::ArriveNode, target_id, event.token});
+        }
+    }
+    state.schedule(ScheduledEvent{event.time, state.next_order(), ScheduledEventType::ReevaluatePending, {}, entt::null});
+}
+
+void SimulationEngine::handle_parallel_gateway(RunState& state, const ScheduledEvent& event) const
+{
+    if (!state.token_valid(event.token))
+    {
+        return;
+    }
+
+    const auto& node = state.model().node(event.node_id);
+    const auto token_component = state.token(event.token);
+    const auto incoming_count = state.model().incoming.contains(node.id) ? state.model().incoming.at(node.id).size() : 0U;
+    const auto outgoing_count = state.model().outgoing.contains(node.id) ? state.model().outgoing.at(node.id).size() : 0U;
+
+    if (incoming_count > 1)
+    {
+        auto& barrier = state.join_barriers()[join_key(token_component.entity_id, node.id)];
+        barrier.waiting_tokens.push_back(event.token);
+        if (barrier.waiting_tokens.size() < incoming_count)
+        {
+            state.log_event(event.time, token_component, node, "gateway_join_wait");
+            return;
+        }
+
+        const auto merged_token = state.create_token(token_component.entity_id, token_component.entity_type, token_component.token_id + ".joined", token_component.created_at);
+        for (const auto waiting_token : barrier.waiting_tokens)
+        {
+            state.destroy_token(waiting_token);
+        }
+        barrier.waiting_tokens.clear();
+        state.join_barriers().erase(join_key(token_component.entity_id, node.id));
+
+        state.log_event(event.time, state.token(merged_token), node, "gateway_join_complete");
+        continue_parallel_gateway(state, event, outgoing_count, merged_token);
+        return;
+    }
+
+    continue_parallel_gateway(state, event, outgoing_count, event.token);
+}
+
+void SimulationEngine::continue_parallel_gateway(RunState& state, const ScheduledEvent& event, std::size_t outgoing_count, entt::entity token_entity) const
+{
+    if (outgoing_count == 0)
+    {
+        return;
+    }
+
+    const auto& node = state.model().node(event.node_id);
+    if (outgoing_count == 1)
+    {
+        state.schedule(ScheduledEvent{event.time, state.next_order(), ScheduledEventType::ArriveNode, state.model().outgoing.at(node.id).front(), token_entity});
+        return;
+    }
+
+    const auto barrier_token = state.token(token_entity);
+    state.log_event(event.time, barrier_token, node, "gateway_fork");
+
+    int branch_index = 0;
+    for (const auto& target_id : state.model().outgoing.at(node.id))
+    {
+        const auto child_token_id = barrier_token.token_id + ".p" + std::to_string(branch_index++);
+        const auto child_token = state.create_token(barrier_token.entity_id, barrier_token.entity_type, child_token_id, barrier_token.created_at);
+        state.schedule(ScheduledEvent{event.time, state.next_order(), ScheduledEventType::ArriveNode, target_id, child_token});
+    }
+    state.destroy_token(token_entity);
 }
 
 } // namespace flux

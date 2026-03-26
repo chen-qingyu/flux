@@ -35,32 +35,24 @@
 构建：
 
 ```bash
-xmake
+xmake build
 ```
 
-运行测试：
+运行：
 
 ```bash
-xmake run test
+xmake run flux --input data/demo.bpmn
 ```
 
-默认运行：
-
-```bash
-xmake run flux
-```
-
-显式传参：
+完整写法：
 
 ```bash
 xmake run flux --input data/demo.bpmn --output output --seed 42
 ```
 
-默认参数：
-
-- 输入：`data/demo.bpmn`
-- 输出：`output`
-- 种子：`42`
+- `--input`: 输入文件，必填
+- `--output`: 输出目录，可省略，默认是 `output`
+- `--seed`: 随机种子，可省略，默认是 `42`
 
 ## 输出文件
 

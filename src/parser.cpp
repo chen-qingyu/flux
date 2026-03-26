@@ -109,26 +109,13 @@ private:
         return properties;
     }
 
-    [[nodiscard]] double read_required_double(const PropertyMap& properties, const std::vector<std::string>& keys, const std::string& context) const
+    [[nodiscard]] double read_required_double(const PropertyMap& properties, const std::string& key, const std::string& context) const
     {
-        for (const auto& key : keys)
+        if (const auto found = properties.find(key); found != properties.end())
         {
-            if (const auto found = properties.find(key); found != properties.end())
-            {
-                return std::stod(found->second);
-            }
+            return std::stod(found->second);
         }
-
-        std::string message = context + " is missing required numeric property. Expected one of: ";
-        for (std::size_t index = 0; index < keys.size(); ++index)
-        {
-            if (index > 0)
-            {
-                message += ", ";
-            }
-            message += keys[index];
-        }
-        throw std::runtime_error(message);
+        throw std::runtime_error(context + " is missing required numeric property '" + key + "'.");
     }
 
     [[nodiscard]] std::string read_required_text(const PropertyMap& properties, const std::string& key, const std::string& context) const
@@ -172,30 +159,30 @@ private:
         switch (distribution_type)
         {
             case DistributionType::Static:
-                return DistributionSpec{DistributionType::Static, read_required_double(properties, {"_staticInterval", "_staticValue", "_fixedDuration", "_duration"}, context), 0.0};
+                return DistributionSpec{DistributionType::Static, read_required_double(properties, "_staticInterval", context), 0.0};
             case DistributionType::Uniform:
                 return DistributionSpec{
                     DistributionType::Uniform,
-                    read_required_double(properties, {"_uniformMin", "_min"}, context),
-                    read_required_double(properties, {"_uniformMax", "_max"}, context),
+                    read_required_double(properties, "_min", context),
+                    read_required_double(properties, "_max", context),
                 };
             case DistributionType::Exponential:
                 return DistributionSpec{
                     DistributionType::Exponential,
-                    read_required_double(properties, {"_mean", "_exponentialMean"}, context),
+                    read_required_double(properties, "_mean", context),
                     0.0,
                 };
             case DistributionType::Normal:
                 return DistributionSpec{
                     DistributionType::Normal,
-                    read_required_double(properties, {"_mean"}, context),
-                    read_required_double(properties, {"_standardDeviation", "_stddev", "_std"}, context),
+                    read_required_double(properties, "_mean", context),
+                    read_required_double(properties, "_standardDeviation", context),
                 };
             case DistributionType::LogNormal:
                 return DistributionSpec{
                     DistributionType::LogNormal,
-                    read_required_double(properties, {"_mean"}, context),
-                    read_required_double(properties, {"_standardDeviation", "_stddev", "_std"}, context),
+                    read_required_double(properties, "_mean", context),
+                    read_required_double(properties, "_standardDeviation", context),
                 };
         }
 

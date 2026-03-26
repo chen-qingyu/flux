@@ -23,8 +23,8 @@
                     <camunda:property name="_taskType" value="delay" />
                     <camunda:property name="_resourceStrategy" value="all" />
                     <camunda:property name="_distributionType" value="uniform" />
-                    <camunda:property name="_uniformMin" value="10" />
-                    <camunda:property name="_uniformMax" value="20" />
+                    <camunda:property name="_min" value="10" />
+                    <camunda:property name="_max" value="20" />
                 </camunda:properties>
             </bpmn:extensionElements>
             <bpmn:incoming>Flow_in</bpmn:incoming>

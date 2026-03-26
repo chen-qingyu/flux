@@ -7,17 +7,13 @@
 namespace flux
 {
 
-class IModelParser
+class BpmnParser
 {
 public:
-    virtual ~IModelParser() = default;
-    virtual SimulationModel parse(const std::filesystem::path& input_path) const = 0;
-};
+    SimulationModel parse(const std::filesystem::path& input_path) const;
 
-class BpmnParser final : public IModelParser
-{
-public:
-    SimulationModel parse(const std::filesystem::path& input_path) const override;
+private:
+    class ParseSession;
 };
 
 } // namespace flux

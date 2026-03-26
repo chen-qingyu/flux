@@ -10,6 +10,7 @@
 #include "engine.hpp"
 #include "parser.hpp"
 #include "reporter.hpp"
+#include "tools.hpp"
 
 namespace flux::test_support
 {

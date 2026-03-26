@@ -16,6 +16,8 @@
 #include <entt/entt.hpp>
 #include <magic_enum/magic_enum.hpp>
 
+#include "tools.hpp"
+
 namespace flux
 {
 namespace
@@ -394,7 +396,7 @@ public:
                     continue;
                 }
 
-                const auto& node = model_.node(it->task_id);
+                const auto& node = flux::node(model_, it->task_id);
                 const auto required = task_resources(it->task_id);
                 const auto allocation = allocate_resources_if_possible(it->task_id, node.task->resource_strategy);
                 if (!required.empty() && allocation.empty())
@@ -477,7 +479,7 @@ private:
 
         for (const auto& resource_id : resource_ids_)
         {
-            const auto& definition = model_.resource(resource_id);
+            const auto& definition = flux::resource(model_, resource_id);
             const auto entity = registry_.create();
             registry_.emplace<ResourceRuntime>(entity, ResourceRuntime{definition.id, definition.name, definition.capacity, 0, 0.0, 0.0, 0, 0.0, 0});
             resource_entities_.insert_or_assign(resource_id, entity);
@@ -548,7 +550,7 @@ void SimulationEngine::schedule_start_events(RunState& state) const
 {
     for (const auto& start_id : state.model().start_node_ids)
     {
-        const auto& start_node = state.model().node(start_id);
+        const auto& start_node = flux::node(state.model(), start_id);
         double next_time = 0.0;
         for (std::size_t index = 0; index < start_node.generator->entity_count; ++index)
         {
@@ -582,7 +584,7 @@ void SimulationEngine::process_event(RunState& state, const ScheduledEvent& even
 
 void SimulationEngine::handle_generate_entity(RunState& state, const ScheduledEvent& event) const
 {
-    const auto& start_node = state.model().node(event.node_id);
+    const auto& start_node = flux::node(state.model(), event.node_id);
     const auto entity_id = state.next_entity_id(start_node.name, start_node.generator->entity_type);
     const auto token = state.create_token(entity_id, start_node.generator->entity_type, entity_id + ".t0", event.time);
     const auto token_component = state.token(token);
@@ -607,7 +609,7 @@ void SimulationEngine::handle_arrive_node(RunState& state, const ScheduledEvent&
         return;
     }
 
-    const auto& node = state.model().node(event.node_id);
+    const auto& node = flux::node(state.model(), event.node_id);
     const auto token_component = state.token(event.token);
 
     if (node.type == NodeType::Task)
@@ -656,7 +658,7 @@ void SimulationEngine::handle_finish_task(RunState& state, const ScheduledEvent&
         return;
     }
 
-    const auto& node = state.model().node(event.node_id);
+    const auto& node = flux::node(state.model(), event.node_id);
     const auto token_component = state.token(event.token);
     const auto active_task = state.registry().get<ActiveTask>(event.token);
     state.apply_release(active_task.allocated_resources, event.time, token_component.entity_id, node.id);
@@ -681,7 +683,7 @@ void SimulationEngine::handle_parallel_gateway(RunState& state, const ScheduledE
         return;
     }
 
-    const auto& node = state.model().node(event.node_id);
+    const auto& node = flux::node(state.model(), event.node_id);
     const auto token_component = state.token(event.token);
     const auto incoming_count = state.model().incoming.contains(node.id) ? state.model().incoming.at(node.id).size() : 0U;
     const auto outgoing_count = state.model().outgoing.contains(node.id) ? state.model().outgoing.at(node.id).size() : 0U;
@@ -719,7 +721,7 @@ void SimulationEngine::continue_parallel_gateway(RunState& state, const Schedule
         return;
     }
 
-    const auto& node = state.model().node(event.node_id);
+    const auto& node = flux::node(state.model(), event.node_id);
     if (outgoing_count == 1)
     {
         state.schedule(ScheduledEvent{event.time, state.next_order(), ScheduledEventType::ArriveNode, state.model().outgoing.at(node.id).front(), token_entity});

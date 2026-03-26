@@ -11,6 +11,8 @@
 #include <magic_enum/magic_enum.hpp>
 #include <pugixml.hpp>
 
+#include "tools.hpp"
+
 namespace flux
 {
 class BpmnParser::ParseSession
@@ -407,7 +409,7 @@ private:
         build_flow_indexes();
         bind_task_resources();
         normalize_model();
-        model_.validate();
+        validate_model();
     }
 
     void build_flow_indexes()
@@ -423,8 +425,8 @@ private:
     {
         for (const auto& [left_ref, right_ref] : associations_)
         {
-            const auto left_is_task = model_.nodes.contains(left_ref) && model_.node(left_ref).type == NodeType::Task;
-            const auto right_is_task = model_.nodes.contains(right_ref) && model_.node(right_ref).type == NodeType::Task;
+            const auto left_is_task = model_.nodes.contains(left_ref) && flux::node(model_, left_ref).type == NodeType::Task;
+            const auto right_is_task = model_.nodes.contains(right_ref) && flux::node(model_, right_ref).type == NodeType::Task;
             const auto left_is_resource = model_.resources.contains(left_ref);
             const auto right_is_resource = model_.resources.contains(right_ref);
 
@@ -448,6 +450,85 @@ private:
         }
 
         std::sort(model_.start_node_ids.begin(), model_.start_node_ids.end());
+    }
+
+    void validate_model() const
+    {
+        if (model_.process_id.empty())
+        {
+            throw std::runtime_error("BPMN process id is missing.");
+        }
+        if (model_.start_node_ids.empty())
+        {
+            throw std::runtime_error("Simulation model must contain at least one start event.");
+        }
+
+        for (const auto& [node_id, definition] : model_.nodes)
+        {
+            switch (definition.type)
+            {
+                case NodeType::StartEvent:
+                    if (!definition.generator.has_value())
+                    {
+                        throw std::runtime_error("Start event '" + node_id + "' is missing generator settings.");
+                    }
+                    if (definition.generator->entity_count == 0)
+                    {
+                        throw std::runtime_error("Start event '" + node_id + "' must generate at least one entity.");
+                    }
+                    if (!model_.outgoing.contains(node_id) || model_.outgoing.at(node_id).empty())
+                    {
+                        throw std::runtime_error("Start event '" + node_id + "' must have outgoing sequence flow.");
+                    }
+                    break;
+                case NodeType::Task:
+                    if (!definition.task.has_value())
+                    {
+                        throw std::runtime_error("Task '" + node_id + "' is missing duration settings.");
+                    }
+                    if (!model_.outgoing.contains(node_id) || model_.outgoing.at(node_id).empty())
+                    {
+                        throw std::runtime_error("Task '" + node_id + "' must have outgoing sequence flow.");
+                    }
+                    break;
+                case NodeType::EndEvent:
+                    break;
+                case NodeType::ExclusiveGateway:
+                case NodeType::ParallelGateway:
+                    if (!model_.outgoing.contains(node_id) || model_.outgoing.at(node_id).empty())
+                    {
+                        throw std::runtime_error("Gateway '" + node_id + "' must have outgoing sequence flow.");
+                    }
+                    break;
+            }
+        }
+
+        for (const auto& flow : model_.flows)
+        {
+            if (!model_.nodes.contains(flow.source_id))
+            {
+                throw std::runtime_error("Sequence flow '" + flow.id + "' has unknown source node '" + flow.source_id + "'.");
+            }
+            if (!model_.nodes.contains(flow.target_id))
+            {
+                throw std::runtime_error("Sequence flow '" + flow.id + "' has unknown target node '" + flow.target_id + "'.");
+            }
+        }
+
+        for (const auto& [task_id, resource_ids] : model_.task_resources)
+        {
+            if (!model_.nodes.contains(task_id))
+            {
+                throw std::runtime_error("Task-resource binding references unknown task '" + task_id + "'.");
+            }
+            for (const auto& resource_id : resource_ids)
+            {
+                if (!model_.resources.contains(resource_id))
+                {
+                    throw std::runtime_error("Task-resource binding references unknown resource '" + resource_id + "'.");
+                }
+            }
+        }
     }
 
     SimulationModel model_;

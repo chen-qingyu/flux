@@ -16,8 +16,6 @@ struct EventLogRow
     std::string node_name;
     std::string node_type;
     std::string event_type;
-    std::string resource_snapshot;
-    std::string details_json;
 };
 
 struct ResourceTimelineRow
@@ -31,7 +29,6 @@ struct ResourceTimelineRow
     int queue_length{0};
     std::string entity_id;
     std::string task_id;
-    std::string details_json;
 };
 
 struct ResourceSummaryRow

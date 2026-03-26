@@ -91,57 +91,6 @@ struct JoinBarrierState
     std::vector<entt::entity> waiting_tokens;
 };
 
-std::string json_escape(const std::string& value)
-{
-    std::string escaped;
-    escaped.reserve(value.size() + 8);
-    for (const char ch : value)
-    {
-        switch (ch)
-        {
-            case '\\':
-                escaped += "\\\\";
-                break;
-            case '"':
-                escaped += "\\\"";
-                break;
-            case '\n':
-                escaped += "\\n";
-                break;
-            case '\r':
-                escaped += "\\r";
-                break;
-            case '\t':
-                escaped += "\\t";
-                break;
-            default:
-                escaped.push_back(ch);
-                break;
-        }
-    }
-    return escaped;
-}
-
-std::string json_string(const std::string& value)
-{
-    return "\"" + json_escape(value) + "\"";
-}
-
-std::string json_array(const std::vector<std::string>& values)
-{
-    std::string result = "[";
-    for (std::size_t index = 0; index < values.size(); ++index)
-    {
-        if (index > 0)
-        {
-            result += ',';
-        }
-        result += json_string(values[index]);
-    }
-    result += ']';
-    return result;
-}
-
 std::string join_key(const std::string& entity_id, const std::string& node_id)
 {
     return entity_id + "::" + node_id;
@@ -279,7 +228,7 @@ public:
         return sampler_.sample_positive(spec);
     }
 
-    void log_event(double time, const ProcessToken& token_component, const NodeDefinition& node, const std::string& event_type, std::string resource_snapshot, std::string details_json)
+    void log_event(double time, const ProcessToken& token_component, const NodeDefinition& node, const std::string& event_type)
     {
         result_.reports.event_rows.push_back(EventLogRow{
             time,
@@ -289,12 +238,10 @@ public:
             node.name,
             to_string(node.type),
             event_type,
-            std::move(resource_snapshot),
-            std::move(details_json),
         });
     }
 
-    void log_resource_timeline(double time, const ResourceRuntime& runtime, const std::string& change_type, int queue_length, const std::string& entity_id, const std::string& task_id, std::string details_json)
+    void log_resource_timeline(double time, const ResourceRuntime& runtime, const std::string& change_type, int queue_length, const std::string& entity_id, const std::string& task_id)
     {
         result_.reports.resource_timeline_rows.push_back(ResourceTimelineRow{
             time,
@@ -306,7 +253,6 @@ public:
             queue_length,
             entity_id,
             task_id,
-            std::move(details_json),
         });
     }
 
@@ -334,17 +280,6 @@ public:
         return {};
     }
 
-    [[nodiscard]] std::vector<std::string> resource_names(const std::vector<std::string>& resource_ids) const
-    {
-        std::vector<std::string> names;
-        names.reserve(resource_ids.size());
-        for (const auto& resource_id : resource_ids)
-        {
-            names.push_back(model_.resource(resource_id).name);
-        }
-        return names;
-    }
-
     [[nodiscard]] int queue_length_for_resource(const std::string& resource_id) const
     {
         int count = 0;
@@ -361,34 +296,6 @@ public:
             }
         }
         return count;
-    }
-
-    [[nodiscard]] std::size_t pending_request_count() const
-    {
-        return pending_requests_.size();
-    }
-
-    [[nodiscard]] std::string queue_lengths_json(const std::vector<std::string>& resource_ids) const
-    {
-        std::string result = "{";
-        for (std::size_t index = 0; index < resource_ids.size(); ++index)
-        {
-            if (index > 0)
-            {
-                result += ',';
-            }
-            result += json_string(model_.resource(resource_ids[index]).name);
-            result += ':';
-            result += std::to_string(queue_length_for_resource(resource_ids[index]));
-        }
-        result += '}';
-        return result;
-    }
-
-    [[nodiscard]] std::string resource_snapshot(const std::string& task_id, const std::vector<std::string>& allocation) const
-    {
-        const auto requested = task_resources(task_id);
-        return "{\"requested\":" + json_array(resource_names(requested)) + ",\"allocated\":" + json_array(resource_names(allocation)) + ",\"queue_lengths\":" + queue_lengths_json(requested) + '}';
     }
 
     [[nodiscard]] std::vector<std::string> allocate_resources_if_possible(const std::string& task_id, ResourceStrategy strategy)
@@ -443,8 +350,7 @@ public:
                 "allocate",
                 queue_length_for_resource(resource_id),
                 entity_id,
-                task_id,
-                "{\"wait_time\":" + format_time(wait_time) + ",\"entity_id\":" + json_string(entity_id) + "}");
+                task_id);
         }
     }
 
@@ -462,8 +368,7 @@ public:
                 "release",
                 queue_length_for_resource(resource_id),
                 entity_id,
-                task_id,
-                "{\"entity_id\":" + json_string(entity_id) + "}");
+                task_id);
         }
     }
 
@@ -515,13 +420,7 @@ public:
         registry_.emplace_or_replace<ActiveTask>(token_entity, ActiveTask{node.id, time - wait_time, time, allocation});
 
         const auto duration = sample_positive(node.task->duration_distribution);
-        log_event(
-            time,
-            token_component,
-            node,
-            "task_start",
-            resource_snapshot(node.id, allocation),
-            "{\"wait_time\":" + format_time(wait_time) + ",\"duration\":" + format_time(duration) + ",\"allocated_resources\":" + json_array(resource_names(allocation)) + "}");
+        log_event(time, token_component, node, "task_start");
 
         schedule(ScheduledEvent{time + duration, next_order(), ScheduledEventType::FinishTask, node.id, token_entity});
     }
@@ -665,9 +564,7 @@ SimulationResult SimulationEngine::run(const SimulationModel& model, const Simul
                 event.time,
                 barrier_token,
                 node,
-                "gateway_fork",
-                "{}",
-                "{\"branch_count\":" + std::to_string(outgoing_count) + "}");
+                "gateway_fork");
 
             int branch_index = 0;
             for (const auto& target_id : model.outgoing.at(node.id))
@@ -689,9 +586,7 @@ SimulationResult SimulationEngine::run(const SimulationModel& model, const Simul
                     event.time,
                     token_component,
                     node,
-                    "gateway_join_wait",
-                    "{}",
-                    "{\"arrived\":" + std::to_string(barrier.waiting_tokens.size()) + ",\"required\":" + std::to_string(incoming_count) + "}");
+                    "gateway_join_wait");
                 return;
             }
 
@@ -707,9 +602,7 @@ SimulationResult SimulationEngine::run(const SimulationModel& model, const Simul
                 event.time,
                 context.token(merged_token),
                 node,
-                "gateway_join_complete",
-                "{}",
-                "{\"merged_branches\":" + std::to_string(incoming_count) + "}");
+                "gateway_join_complete");
 
             continue_from_token(merged_token);
             return;
@@ -731,25 +624,13 @@ SimulationResult SimulationEngine::run(const SimulationModel& model, const Simul
         if (node.type == NodeType::Task)
         {
             const auto requested_resources = context.task_resources(node.id);
-            context.log_event(
-                event.time,
-                token_component,
-                node,
-                "task_arrive",
-                context.resource_snapshot(node.id, {}),
-                "{\"requested_resources\":" + json_array(context.resource_names(requested_resources)) + ",\"resource_strategy\":" + json_string(to_string(node.task->resource_strategy)) + "}");
+            context.log_event(event.time, token_component, node, "task_arrive");
 
             const auto allocation = context.allocate_resources_if_possible(node.id, node.task->resource_strategy);
             if (!requested_resources.empty() && allocation.empty())
             {
                 context.enqueue_request(PendingTaskRequest{context.next_order(), event.token, node.id, event.time});
-                context.log_event(
-                    event.time,
-                    token_component,
-                    node,
-                    "task_waiting_for_resources",
-                    context.resource_snapshot(node.id, {}),
-                    "{\"pending_requests\":" + std::to_string(context.pending_request_count()) + "}");
+                context.log_event(event.time, token_component, node, "task_waiting_for_resources");
                 return;
             }
 
@@ -763,9 +644,7 @@ SimulationResult SimulationEngine::run(const SimulationModel& model, const Simul
                 event.time,
                 token_component,
                 node,
-                "entity_exit",
-                "{}",
-                "{\"lifetime\":" + format_time(event.time - token_component.created_at) + "}");
+                "entity_exit");
             ++result.completed_entities;
             context.destroy_token(event.token);
             return;
@@ -774,13 +653,7 @@ SimulationResult SimulationEngine::run(const SimulationModel& model, const Simul
         if (node.type == NodeType::ExclusiveGateway)
         {
             const auto& selected_target = model.outgoing.at(node.id).front();
-            context.log_event(
-                event.time,
-                token_component,
-                node,
-                "gateway_route",
-                "{}",
-                "{\"selected_target_id\":" + json_string(selected_target) + ",\"routing_mode\":\"first_outgoing\"}");
+            context.log_event(event.time, token_component, node, "gateway_route");
             context.schedule(ScheduledEvent{event.time, context.next_order(), ScheduledEventType::ArriveNode, selected_target, event.token});
             return;
         }
@@ -802,13 +675,7 @@ SimulationResult SimulationEngine::run(const SimulationModel& model, const Simul
         const auto token_component = context.token(event.token);
         const auto active_task = context.registry().get<ActiveTask>(event.token);
         context.apply_release(active_task.allocated_resources, event.time, token_component.entity_id, node.id);
-        context.log_event(
-            event.time,
-            token_component,
-            node,
-            "task_finish",
-            context.resource_snapshot(node.id, active_task.allocated_resources),
-            "{\"processing_time\":" + format_time(event.time - active_task.start_time) + ",\"allocated_resources\":" + json_array(context.resource_names(active_task.allocated_resources)) + "}");
+        context.log_event(event.time, token_component, node, "task_finish");
         context.registry().remove<ActiveTask>(event.token);
         schedule_outgoing(event.token, node.id, event.time);
         context.schedule(ScheduledEvent{event.time, context.next_order(), ScheduledEventType::ReevaluatePending, {}, entt::null});
@@ -840,13 +707,7 @@ SimulationResult SimulationEngine::run(const SimulationModel& model, const Simul
                 const auto token = context.create_token(entity_id, start_node.generator->entity_type, entity_id + ".t0", event.time);
                 const auto token_component = context.token(token);
                 ++result.generated_entities;
-                context.log_event(
-                    event.time,
-                    token_component,
-                    start_node,
-                    "entity_generated",
-                    "{}",
-                    "{\"generator\":" + json_string(start_node.name) + ",\"entity_type\":" + json_string(start_node.generator->entity_type) + "}");
+                context.log_event(event.time, token_component, start_node, "entity_generated");
                 schedule_outgoing(token, start_node.id, event.time);
                 break;
             }

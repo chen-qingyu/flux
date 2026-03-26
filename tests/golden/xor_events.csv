@@ -1,7 +1,7 @@
-time,entity_id,entity_type,node_id,node_name,node_type,event_type,resource_snapshot,details_json
-0,XOR发生器_case_0,case,Event_start,XOR发生器,start_event,entity_generated,{},"{""generator"":""XOR发生器"",""entity_type"":""case""}"
-0,XOR发生器_case_0,case,Gateway_xor,互斥决策,exclusive_gateway,gateway_route,{},"{""selected_target_id"":""Task_a"",""routing_mode"":""first_outgoing""}"
-0,XOR发生器_case_0,case,Task_a,路径A任务,task,task_arrive,"{""requested"":[],""allocated"":[],""queue_lengths"":{}}","{""requested_resources"":[],""resource_strategy"":""none""}"
-0,XOR发生器_case_0,case,Task_a,路径A任务,task,task_start,"{""requested"":[],""allocated"":[],""queue_lengths"":{}}","{""wait_time"":0,""duration"":5,""allocated_resources"":[]}"
-5,XOR发生器_case_0,case,Task_a,路径A任务,task,task_finish,"{""requested"":[],""allocated"":[],""queue_lengths"":{}}","{""processing_time"":5,""allocated_resources"":[]}"
-5,XOR发生器_case_0,case,Event_end,结束,end_event,entity_exit,{},"{""lifetime"":5}"
+time,entity_id,entity_type,node_id,node_name,node_type,event_type
+0,XOR发生器_case_0,case,Event_start,XOR发生器,start_event,entity_generated
+0,XOR发生器_case_0,case,Gateway_xor,互斥决策,exclusive_gateway,gateway_route
+0,XOR发生器_case_0,case,Task_a,路径A任务,task,task_arrive
+0,XOR发生器_case_0,case,Task_a,路径A任务,task,task_start
+5,XOR发生器_case_0,case,Task_a,路径A任务,task,task_finish
+5,XOR发生器_case_0,case,Event_end,结束,end_event,entity_exit

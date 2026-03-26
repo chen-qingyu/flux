@@ -77,7 +77,7 @@ void write_reports(const std::filesystem::path& output_directory, const ReportBu
             throw std::runtime_error("Failed to open events.csv for writing.");
         }
 
-        write_line(stream, {"time", "entity_id", "entity_type", "node_id", "node_name", "node_type", "event_type", "resource_snapshot", "details_json"});
+        write_line(stream, {"time", "entity_id", "entity_type", "node_id", "node_name", "node_type", "event_type"});
         for (const auto& row : bundle.event_rows)
         {
             write_line(stream, {
@@ -88,8 +88,6 @@ void write_reports(const std::filesystem::path& output_directory, const ReportBu
                                    row.node_name,
                                    row.node_type,
                                    row.event_type,
-                                   row.resource_snapshot,
-                                   row.details_json,
                                });
         }
     }
@@ -101,7 +99,7 @@ void write_reports(const std::filesystem::path& output_directory, const ReportBu
             throw std::runtime_error("Failed to open resource_timeline.csv for writing.");
         }
 
-        write_line(stream, {"time", "resource_id", "resource_name", "change_type", "in_use", "available", "queue_length", "entity_id", "task_id", "details_json"});
+        write_line(stream, {"time", "resource_id", "resource_name", "change_type", "in_use", "available", "queue_length", "entity_id", "task_id"});
         for (const auto& row : bundle.resource_timeline_rows)
         {
             write_line(stream, {
@@ -114,7 +112,6 @@ void write_reports(const std::filesystem::path& output_directory, const ReportBu
                                    std::to_string(row.queue_length),
                                    row.entity_id,
                                    row.task_id,
-                                   row.details_json,
                                });
         }
     }

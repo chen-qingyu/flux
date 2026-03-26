@@ -1,7 +1,7 @@
-time,resource_id,resource_name,change_type,in_use,available,queue_length,entity_id,task_id,details_json
-0,DataStoreReference_counter,窗口,allocate,1,0,0,FIFO发生器_customer_0,Task_service,"{""wait_time"":0,""entity_id"":""FIFO发生器_customer_0""}"
-4,DataStoreReference_counter,窗口,release,0,1,2,FIFO发生器_customer_0,Task_service,"{""entity_id"":""FIFO发生器_customer_0""}"
-4,DataStoreReference_counter,窗口,allocate,1,0,1,FIFO发生器_customer_1,Task_service,"{""wait_time"":3,""entity_id"":""FIFO发生器_customer_1""}"
-8,DataStoreReference_counter,窗口,release,0,1,1,FIFO发生器_customer_1,Task_service,"{""entity_id"":""FIFO发生器_customer_1""}"
-8,DataStoreReference_counter,窗口,allocate,1,0,0,FIFO发生器_customer_2,Task_service,"{""wait_time"":6,""entity_id"":""FIFO发生器_customer_2""}"
-12,DataStoreReference_counter,窗口,release,0,1,0,FIFO发生器_customer_2,Task_service,"{""entity_id"":""FIFO发生器_customer_2""}"
+time,resource_id,resource_name,change_type,in_use,available,queue_length,entity_id,task_id
+0,DataStoreReference_counter,窗口,allocate,1,0,0,FIFO发生器_customer_0,Task_service
+4,DataStoreReference_counter,窗口,release,0,1,2,FIFO发生器_customer_0,Task_service
+4,DataStoreReference_counter,窗口,allocate,1,0,1,FIFO发生器_customer_1,Task_service
+8,DataStoreReference_counter,窗口,release,0,1,1,FIFO发生器_customer_1,Task_service
+8,DataStoreReference_counter,窗口,allocate,1,0,0,FIFO发生器_customer_2,Task_service
+12,DataStoreReference_counter,窗口,release,0,1,0,FIFO发生器_customer_2,Task_service

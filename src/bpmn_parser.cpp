@@ -8,6 +8,7 @@
 #include <utility>
 #include <vector>
 
+#include <magic_enum/magic_enum.hpp>
 #include <pugixml.hpp>
 
 namespace flux
@@ -111,6 +112,18 @@ std::string read_required_text(const std::unordered_map<std::string, std::string
     throw std::runtime_error(context + " is missing required property '" + key + "'.");
 }
 
+template <typename Enum>
+Enum read_required_enum(const std::unordered_map<std::string, std::string>& properties, const std::string& key, const std::string& context)
+{
+    const auto value = read_required_text(properties, key, context);
+    if (const auto parsed = magic_enum::enum_cast<Enum>(value, magic_enum::case_insensitive); parsed.has_value())
+    {
+        return *parsed;
+    }
+
+    throw std::runtime_error(context + " uses unsupported property '" + key + "' value '" + value + "'.");
+}
+
 std::size_t read_required_count(const std::unordered_map<std::string, std::string>& properties, const std::string& key, const std::string& context)
 {
     if (const auto found = properties.find(key); found != properties.end())
@@ -127,45 +140,38 @@ std::size_t read_required_count(const std::unordered_map<std::string, std::strin
 
 DistributionSpec read_distribution(const std::unordered_map<std::string, std::string>& properties, const std::string& type_key, const std::string& context)
 {
-    const auto distribution_name = lower_copy(read_required_text(properties, type_key, context));
-    if (distribution_name == "static")
+    const auto distribution_type = read_required_enum<DistributionType>(properties, type_key, context);
+    switch (distribution_type)
     {
-        return DistributionSpec{DistributionType::Static, read_required_double(properties, {"_staticInterval", "_staticValue", "_fixedDuration", "_duration"}, context), 0.0};
-    }
-    if (distribution_name == "uniform")
-    {
-        return DistributionSpec{
-            DistributionType::Uniform,
-            read_required_double(properties, {"_uniformMin", "_min"}, context),
-            read_required_double(properties, {"_uniformMax", "_max"}, context),
-        };
-    }
-    if (distribution_name == "exponential")
-    {
-        return DistributionSpec{
-            DistributionType::Exponential,
-            read_required_double(properties, {"_mean", "_exponentialMean"}, context),
-            0.0,
-        };
-    }
-    if (distribution_name == "normal")
-    {
-        return DistributionSpec{
-            DistributionType::Normal,
-            read_required_double(properties, {"_mean"}, context),
-            read_required_double(properties, {"_standardDeviation", "_stddev", "_std"}, context),
-        };
-    }
-    if (distribution_name == "lognormal")
-    {
-        return DistributionSpec{
-            DistributionType::LogNormal,
-            read_required_double(properties, {"_mean"}, context),
-            read_required_double(properties, {"_standardDeviation", "_stddev", "_std"}, context),
-        };
+        case DistributionType::Static:
+            return DistributionSpec{DistributionType::Static, read_required_double(properties, {"_staticInterval", "_staticValue", "_fixedDuration", "_duration"}, context), 0.0};
+        case DistributionType::Uniform:
+            return DistributionSpec{
+                DistributionType::Uniform,
+                read_required_double(properties, {"_uniformMin", "_min"}, context),
+                read_required_double(properties, {"_uniformMax", "_max"}, context),
+            };
+        case DistributionType::Exponential:
+            return DistributionSpec{
+                DistributionType::Exponential,
+                read_required_double(properties, {"_mean", "_exponentialMean"}, context),
+                0.0,
+            };
+        case DistributionType::Normal:
+            return DistributionSpec{
+                DistributionType::Normal,
+                read_required_double(properties, {"_mean"}, context),
+                read_required_double(properties, {"_standardDeviation", "_stddev", "_std"}, context),
+            };
+        case DistributionType::LogNormal:
+            return DistributionSpec{
+                DistributionType::LogNormal,
+                read_required_double(properties, {"_mean"}, context),
+                read_required_double(properties, {"_standardDeviation", "_stddev", "_std"}, context),
+            };
     }
 
-    throw std::runtime_error(context + " uses unsupported distribution type '" + distribution_name + "'.");
+    throw std::runtime_error(context + " uses unsupported distribution type.");
 }
 
 GeneratorSpec read_generator_spec(const pugi::xml_node& node)
@@ -198,19 +204,7 @@ TaskSpec read_task_spec(const pugi::xml_node& node)
     task.duration_distribution = read_distribution(properties, "_distributionType", context);
     if (const auto found = properties.find("_resourceStrategy"); found != properties.end())
     {
-        const auto strategy = lower_copy(found->second);
-        if (strategy == "all")
-        {
-            task.resource_strategy = ResourceStrategy::All;
-        }
-        else if (strategy == "any")
-        {
-            task.resource_strategy = ResourceStrategy::Any;
-        }
-        else
-        {
-            throw std::runtime_error(context + " uses unsupported _resourceStrategy '" + found->second + "'.");
-        }
+        task.resource_strategy = read_required_enum<ResourceStrategy>(properties, "_resourceStrategy", context);
     }
     else
     {

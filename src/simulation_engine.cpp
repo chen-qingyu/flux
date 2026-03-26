@@ -14,6 +14,7 @@
 #include <vector>
 
 #include <entt/entt.hpp>
+#include <magic_enum/magic_enum.hpp>
 
 namespace flux
 {
@@ -236,7 +237,7 @@ public:
             token_component.entity_type,
             node.id,
             node.name,
-            to_string(node.type),
+            std::string(magic_enum::enum_name(node.type)),
             event_type,
         });
     }

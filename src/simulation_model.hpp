@@ -34,59 +34,6 @@ enum class ResourceStrategy
     Any,
 };
 
-inline std::string to_string(NodeType value)
-{
-    switch (value)
-    {
-        case NodeType::StartEvent:
-            return "start_event";
-        case NodeType::Task:
-            return "task";
-        case NodeType::EndEvent:
-            return "end_event";
-        case NodeType::ExclusiveGateway:
-            return "exclusive_gateway";
-        case NodeType::ParallelGateway:
-            return "parallel_gateway";
-    }
-
-    return "unknown";
-}
-
-inline std::string to_string(DistributionType value)
-{
-    switch (value)
-    {
-        case DistributionType::Static:
-            return "static";
-        case DistributionType::Uniform:
-            return "uniform";
-        case DistributionType::Exponential:
-            return "exponential";
-        case DistributionType::Normal:
-            return "normal";
-        case DistributionType::LogNormal:
-            return "lognormal";
-    }
-
-    return "unknown";
-}
-
-inline std::string to_string(ResourceStrategy value)
-{
-    switch (value)
-    {
-        case ResourceStrategy::None:
-            return "none";
-        case ResourceStrategy::All:
-            return "all";
-        case ResourceStrategy::Any:
-            return "any";
-    }
-
-    return "unknown";
-}
-
 struct DistributionSpec
 {
     DistributionType type{DistributionType::Static};

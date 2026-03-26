@@ -54,6 +54,4 @@ struct ReportBundle
 
 void write_reports(const std::filesystem::path& output_directory, const ReportBundle& bundle);
 
-std::string format_time(double value);
-
 } // namespace flux

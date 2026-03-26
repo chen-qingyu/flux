@@ -2,144 +2,97 @@
 
 #include <filesystem>
 #include <fstream>
-#include <iomanip>
-#include <sstream>
 #include <stdexcept>
 #include <string>
-#include <vector>
+
+#include <spdlog/fmt/fmt.h>
 
 namespace flux
 {
 namespace
 {
 
-std::string escape_csv(const std::string& value)
+std::ofstream open_csv_file(const std::filesystem::path& path)
 {
-    if (value.find_first_of(",\"\n\r") == std::string::npos)
+    std::ofstream stream(path, std::ios::binary);
+    if (!stream)
     {
-        return value;
+        throw std::runtime_error("Failed to open " + path.filename().string() + " for writing.");
     }
-
-    std::string escaped;
-    escaped.reserve(value.size() + 4);
-    escaped.push_back('"');
-    for (const char ch : value)
-    {
-        if (ch == '"')
-        {
-            escaped.push_back('"');
-        }
-        escaped.push_back(ch);
-    }
-    escaped.push_back('"');
-    return escaped;
+    return stream;
 }
 
-void write_line(std::ofstream& stream, const std::vector<std::string>& columns)
+void write_events(const std::filesystem::path& output_directory, const ReportBundle& bundle)
 {
-    for (std::size_t index = 0; index < columns.size(); ++index)
+    auto stream = open_csv_file(output_directory / "events.csv");
+
+    stream << "time,entity_id,entity_type,node_id,node_name,node_type,event_type\n";
+    for (const auto& row : bundle.event_rows)
     {
-        if (index > 0)
-        {
-            stream << ',';
-        }
-        stream << escape_csv(columns[index]);
+        stream << fmt::format(
+            "{:.3f},{},{},{},{},{},{}\n",
+            row.time,
+            row.entity_id,
+            row.entity_type,
+            row.node_id,
+            row.node_name,
+            row.node_type,
+            row.event_type);
     }
-    stream << '\n';
+}
+
+void write_resource_timeline(const std::filesystem::path& output_directory, const ReportBundle& bundle)
+{
+    auto stream = open_csv_file(output_directory / "resource_timeline.csv");
+
+    stream << "time,resource_id,resource_name,change_type,in_use,available,queue_length,entity_id,task_id\n";
+    for (const auto& row : bundle.resource_timeline_rows)
+    {
+        stream << fmt::format(
+            "{:.3f},{},{},{},{},{},{},{},{}\n",
+            row.time,
+            row.resource_id,
+            row.resource_name,
+            row.change_type,
+            row.in_use,
+            row.available,
+            row.queue_length,
+            row.entity_id,
+            row.task_id);
+    }
+}
+
+void write_resource_summary(const std::filesystem::path& output_directory, const ReportBundle& bundle)
+{
+    auto stream = open_csv_file(output_directory / "resource_summary.csv");
+
+    stream << "resource_id,resource_name,capacity,busy_time,idle_time,utilization,max_queue_length,average_wait_time,allocation_count,simulation_horizon\n";
+    for (const auto& row : bundle.resource_summary_rows)
+    {
+        stream << fmt::format(
+            "{},{},{},{:.3f},{:.3f},{:.3f},{},{:.3f},{},{:.3f}\n",
+            row.resource_id,
+            row.resource_name,
+            row.capacity,
+            row.busy_time,
+            row.idle_time,
+            row.utilization,
+            row.max_queue_length,
+            row.average_wait_time,
+            row.allocation_count,
+            row.simulation_horizon);
+    }
 }
 
 } // namespace
-
-std::string format_time(double value)
-{
-    std::ostringstream stream;
-    stream << std::fixed << std::setprecision(3) << value;
-    auto text = stream.str();
-    while (!text.empty() && text.back() == '0')
-    {
-        text.pop_back();
-    }
-    if (!text.empty() && text.back() == '.')
-    {
-        text.pop_back();
-    }
-    return text.empty() ? "0" : text;
-}
 
 void write_reports(const std::filesystem::path& output_directory, const ReportBundle& bundle)
 {
     std::filesystem::create_directories(output_directory);
 
-    {
-        std::ofstream stream(output_directory / "events.csv", std::ios::binary);
-        if (!stream)
-        {
-            throw std::runtime_error("Failed to open events.csv for writing.");
-        }
-
-        write_line(stream, {"time", "entity_id", "entity_type", "node_id", "node_name", "node_type", "event_type"});
-        for (const auto& row : bundle.event_rows)
-        {
-            write_line(stream, {
-                                   format_time(row.time),
-                                   row.entity_id,
-                                   row.entity_type,
-                                   row.node_id,
-                                   row.node_name,
-                                   row.node_type,
-                                   row.event_type,
-                               });
-        }
-    }
-
-    {
-        std::ofstream stream(output_directory / "resource_timeline.csv", std::ios::binary);
-        if (!stream)
-        {
-            throw std::runtime_error("Failed to open resource_timeline.csv for writing.");
-        }
-
-        write_line(stream, {"time", "resource_id", "resource_name", "change_type", "in_use", "available", "queue_length", "entity_id", "task_id"});
-        for (const auto& row : bundle.resource_timeline_rows)
-        {
-            write_line(stream, {
-                                   format_time(row.time),
-                                   row.resource_id,
-                                   row.resource_name,
-                                   row.change_type,
-                                   std::to_string(row.in_use),
-                                   std::to_string(row.available),
-                                   std::to_string(row.queue_length),
-                                   row.entity_id,
-                                   row.task_id,
-                               });
-        }
-    }
-
-    {
-        std::ofstream stream(output_directory / "resource_summary.csv", std::ios::binary);
-        if (!stream)
-        {
-            throw std::runtime_error("Failed to open resource_summary.csv for writing.");
-        }
-
-        write_line(stream, {"resource_id", "resource_name", "capacity", "busy_time", "idle_time", "utilization", "max_queue_length", "average_wait_time", "allocation_count", "simulation_horizon"});
-        for (const auto& row : bundle.resource_summary_rows)
-        {
-            write_line(stream, {
-                                   row.resource_id,
-                                   row.resource_name,
-                                   std::to_string(row.capacity),
-                                   format_time(row.busy_time),
-                                   format_time(row.idle_time),
-                                   format_time(row.utilization),
-                                   std::to_string(row.max_queue_length),
-                                   format_time(row.average_wait_time),
-                                   std::to_string(row.allocation_count),
-                                   format_time(row.simulation_horizon),
-                               });
-        }
-    }
+    write_events(output_directory, bundle);
+    write_resource_timeline(output_directory, bundle);
+    write_resource_summary(output_directory, bundle);
 }
 
 } // namespace flux

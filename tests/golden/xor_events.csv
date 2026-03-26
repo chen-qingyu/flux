@@ -1,7 +1,7 @@
 time,entity_id,entity_type,node_id,node_name,node_type,event_type
-0,XOR发生器_case_0,case,Event_start,XOR发生器,StartEvent,entity_generated
-0,XOR发生器_case_0,case,Gateway_xor,互斥决策,ExclusiveGateway,gateway_route
-0,XOR发生器_case_0,case,Task_a,路径A任务,Task,task_arrive
-0,XOR发生器_case_0,case,Task_a,路径A任务,Task,task_start
-5,XOR发生器_case_0,case,Task_a,路径A任务,Task,task_finish
-5,XOR发生器_case_0,case,Event_end,结束,EndEvent,entity_exit
+0.000,XOR发生器_case_0,case,Event_start,XOR发生器,StartEvent,entity_generated
+0.000,XOR发生器_case_0,case,Gateway_xor,互斥决策,ExclusiveGateway,gateway_route
+0.000,XOR发生器_case_0,case,Task_a,路径A任务,Task,task_arrive
+0.000,XOR发生器_case_0,case,Task_a,路径A任务,Task,task_start
+5.000,XOR发生器_case_0,case,Task_a,路径A任务,Task,task_finish
+5.000,XOR发生器_case_0,case,Event_end,结束,EndEvent,entity_exit

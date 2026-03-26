@@ -66,7 +66,7 @@ int main(int argc, char** argv)
         spdlog::info("Output directory: {}", cli.output_dir.string());
         spdlog::info("Generated entities: {}", result.generated_entities);
         spdlog::info("Completed entities: {}", result.completed_entities);
-        spdlog::info("Simulation horizon: {}", flux::format_time(result.simulation_horizon));
+        spdlog::info("Simulation horizon: {:.3f}", result.simulation_horizon);
         return 0;
     }
     catch (const std::exception& exception)

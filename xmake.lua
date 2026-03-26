@@ -5,7 +5,7 @@ set_languages("cxx20")
 set_encodings("utf-8")
 
 add_rules("mode.debug", "mode.release")
-add_requires("entt", "pugixml", "spdlog", "magic_enum", "catch2", "nlohmann_json")
+add_requires("entt", "pugixml", "spdlog", "magic_enum", "catch2", "nlohmann_json", "argparse")
 
 target("flux-lib")
     set_kind("static")
@@ -16,6 +16,7 @@ target("flux-lib")
 target("flux")
     set_kind("binary")
     set_rundir(".")
+    add_packages("argparse")
     add_deps("flux-lib")
     add_files("src/main.cpp")
 

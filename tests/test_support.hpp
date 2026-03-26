@@ -61,9 +61,9 @@ inline void require_report_matches(const std::filesystem::path& model_path, cons
     std::filesystem::create_directories(output_root);
     write_reports(output_root, result.reports);
 
-    REQUIRE(read_text(output_root / "events.csv") == read_text(project_root / "tests" / "golden" / (golden_prefix + "_events.csv")));
-    REQUIRE(read_text(output_root / "resource_timeline.csv") == read_text(project_root / "tests" / "golden" / (golden_prefix + "_resource_timeline.csv")));
-    REQUIRE(read_text(output_root / "resource_summary.csv") == read_text(project_root / "tests" / "golden" / (golden_prefix + "_resource_summary.csv")));
+    REQUIRE(read_text(output_root / "events.csv") == read_text(project_root / "data" / "golden" / (golden_prefix + "_events.csv")));
+    REQUIRE(read_text(output_root / "resource_timeline.csv") == read_text(project_root / "data" / "golden" / (golden_prefix + "_resource_timeline.csv")));
+    REQUIRE(read_text(output_root / "resource_summary.csv") == read_text(project_root / "data" / "golden" / (golden_prefix + "_resource_summary.csv")));
 }
 
 inline std::vector<EventLogRow> select_events(const SimulationResult& result, const std::string& event_type)

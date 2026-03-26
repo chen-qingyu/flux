@@ -119,6 +119,10 @@ xmake run flux --input data/demo.bpmn --output output --seed 42
 ## 代码结构
 
 ```text
+data/
+  demo.bpmn        示例 BPMN
+  tests/           测试 BPMN
+  golden/          golden CSV
 src/
   main.cpp         CLI 入口
   model.hpp        数据模型
@@ -127,7 +131,5 @@ src/
   reporter.hpp/.cpp CSV 输出
   tools.hpp/.cpp   常用模型访问工具
 tests/
-  parser_tests.cpp
-  runtime_tests.cpp
-  golden_tests.cpp
+  *_tests.cpp   测试代码
 ```

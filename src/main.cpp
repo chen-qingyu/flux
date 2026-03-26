@@ -6,9 +6,9 @@
 #include <argparse/argparse.hpp>
 #include <spdlog/spdlog.h>
 
-#include "bpmn_parser.hpp"
-#include "csv_reporting.hpp"
-#include "simulation_engine.hpp"
+#include "engine.hpp"
+#include "parser.hpp"
+#include "reporter.hpp"
 
 namespace
 {

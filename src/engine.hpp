@@ -6,8 +6,8 @@
 
 #include <entt/entt.hpp>
 
-#include "csv_reporting.hpp"
-#include "simulation_model.hpp"
+#include "model.hpp"
+#include "reporter.hpp"
 
 namespace flux
 {

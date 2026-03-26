@@ -2,7 +2,7 @@
 
 #include <filesystem>
 
-#include "simulation_model.hpp"
+#include "model.hpp"
 
 namespace flux
 {

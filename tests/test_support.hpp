@@ -56,15 +56,14 @@ inline void require_report_matches(const std::filesystem::path& model_path, cons
 {
     const auto result = run_model(model_path);
 
-    const auto temp_root = std::filesystem::temp_directory_path() / "flux-tests" / golden_prefix;
-    std::filesystem::remove_all(temp_root);
-    std::filesystem::create_directories(temp_root);
-    write_reports(temp_root, result.reports);
-
     const auto project_root = std::filesystem::current_path();
-    REQUIRE(read_text(temp_root / "events.csv") == read_text(project_root / "tests" / "golden" / (golden_prefix + "_events.csv")));
-    REQUIRE(read_text(temp_root / "resource_timeline.csv") == read_text(project_root / "tests" / "golden" / (golden_prefix + "_resource_timeline.csv")));
-    REQUIRE(read_text(temp_root / "resource_summary.csv") == read_text(project_root / "tests" / "golden" / (golden_prefix + "_resource_summary.csv")));
+    const auto output_root = project_root / "output" / golden_prefix;
+    std::filesystem::create_directories(output_root);
+    write_reports(output_root, result.reports);
+
+    REQUIRE(read_text(output_root / "events.csv") == read_text(project_root / "tests" / "golden" / (golden_prefix + "_events.csv")));
+    REQUIRE(read_text(output_root / "resource_timeline.csv") == read_text(project_root / "tests" / "golden" / (golden_prefix + "_resource_timeline.csv")));
+    REQUIRE(read_text(output_root / "resource_summary.csv") == read_text(project_root / "tests" / "golden" / (golden_prefix + "_resource_summary.csv")));
 }
 
 inline std::vector<EventLogRow> select_events(const SimulationResult& result, const std::string& event_type)

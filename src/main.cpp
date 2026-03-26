@@ -1,10 +1,9 @@
 #include <cstdint>
-#include <cstdlib>
 #include <filesystem>
-#include <iostream>
 #include <stdexcept>
 #include <string>
 
+#include <argparse/argparse.hpp>
 #include <spdlog/spdlog.h>
 
 #include "bpmn_parser.hpp"
@@ -25,33 +24,26 @@ CliOptions parse_args(int argc, char** argv)
 {
     CliOptions options;
 
-    for (int index = 1; index < argc; ++index)
-    {
-        const std::string arg = argv[index];
-        if (arg == "--input" && index + 1 < argc)
-        {
-            options.input_path = argv[++index];
-            continue;
-        }
-        if (arg == "--output" && index + 1 < argc)
-        {
-            options.output_dir = argv[++index];
-            continue;
-        }
-        if (arg == "--seed" && index + 1 < argc)
-        {
-            options.seed = static_cast<std::uint64_t>(std::stoull(argv[++index]));
-            continue;
-        }
-        if (arg == "--help" || arg == "-h")
-        {
-            std::cout << "Usage: flux [--input path/to/model.bpmn] [--output output_dir] [--seed 42]\n";
-            std::exit(0);
-        }
+    argparse::ArgumentParser program("flux", "0.1.0");
 
-        throw std::runtime_error("Unknown argument: " + arg);
-    }
+    program.add_argument("--input")
+        .default_value(options.input_path.string())
+        .help("Path to the BPMN model to simulate.");
 
+    program.add_argument("--output")
+        .default_value(options.output_dir.string())
+        .help("Directory where CSV reports will be written.");
+
+    program.add_argument("--seed")
+        .default_value(options.seed)
+        .scan<'u', std::uint64_t>()
+        .help("Deterministic random seed used by the simulator.");
+
+    program.parse_args(argc, argv);
+
+    options.input_path = program.get<std::string>("--input");
+    options.output_dir = program.get<std::string>("--output");
+    options.seed = program.get<std::uint64_t>("--seed");
     return options;
 }
 

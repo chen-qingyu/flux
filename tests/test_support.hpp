@@ -5,13 +5,14 @@
 #include <string>
 #include <vector>
 
-#include <Catch2/catch_test_macros.hpp>
+#include <catch2/catch_test_macros.hpp>
 
 #include "bpmn_parser.hpp"
 #include "csv_reporting.hpp"
 #include "simulation_engine.hpp"
 
-namespace flux::test_support {
+namespace flux::test_support
+{
 
 inline std::string read_text(const std::filesystem::path& path)
 {

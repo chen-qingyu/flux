@@ -1,4 +1,4 @@
-#include <Catch2/catch_test_macros.hpp>
+#include <catch2/catch_test_macros.hpp>
 
 #include "test_support.hpp"
 

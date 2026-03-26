@@ -2,12 +2,13 @@
 
 #include <algorithm>
 #include <cctype>
-#include <pugixml.hpp>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
+
+#include <pugixml.hpp>
 
 namespace flux
 {

@@ -20,12 +20,10 @@ ReflowComments: true
 SpacesInLineCommentPrefix: { Minimum: 1, Maximum: 1 }
 IncludeBlocks: Regroup
 IncludeCategories:
-  - Regex: '^"(llvm|llvm-c|clang|clang-c)/'
+  - Regex: "^<[a-zA-Z0-9_-]+>"
     Priority: 1
-  - Regex: "^<(__.*)>"
+  - Regex: '^<([a-zA-Z0-9_-]+/)*[a-zA-Z0-9_-]+\.(h|hpp)>'
     Priority: 2
-  - Regex: "^<.*>"
+  - Regex: '^"[a-zA-Z0-9_-]+\.(h|hpp)"'
     Priority: 3
-  - Regex: '^".*"'
-    Priority: 4
 InsertTrailingNewline: true

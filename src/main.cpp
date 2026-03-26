@@ -2,9 +2,10 @@
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
-#include <spdlog/spdlog.h>
 #include <stdexcept>
 #include <string>
+
+#include <spdlog/spdlog.h>
 
 #include "bpmn_parser.hpp"
 #include "csv_reporting.hpp"

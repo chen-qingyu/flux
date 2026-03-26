@@ -5,7 +5,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <deque>
-#include <entt/entt.hpp>
 #include <queue>
 #include <random>
 #include <stdexcept>
@@ -13,6 +12,8 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
+
+#include <entt/entt.hpp>
 
 namespace flux
 {

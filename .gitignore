@@ -2,3 +2,6 @@
 /.xmake/
 /build/
 /output/
+/python/*.egg-info/
+/python/dist/
+__pycache__/

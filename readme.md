@@ -38,24 +38,53 @@
 xmake build
 ```
 
+如果要构建 Python SDK：
+
+```bash
+xmake build _native
+```
+
 运行：
 
 ```bash
-xmake run flux --input data/demo.bpmn
+xmake run flux --file data/demo.bpmn
 ```
 
 完整写法：
 
 ```bash
-xmake run flux --input data/demo.bpmn --seed 42
+xmake run flux --file data/demo.bpmn --seed 42
 ```
 
-- `--input`: 输入文件，必填
+- `--file`: 输入文件，必填
 - `--seed`: 随机种子，可省略，默认是 `42`
+
+## Python SDK
+
+项目现在同时提供本地 Python SDK，包名是 `flux`，支持 Python `3.9+`。
+
+当前 Python SDK 只提供一个函数：
+
+- `flux.run(file, seed=42)`
+
+它的行为和 CLI 一致：读取 BPMN，执行仿真，并把 CSV 固定写到 `output/`。
+
+如果用户已经通过 `pip install flux-*.whl|tar.gz` 安装了 SDK，也可以直接运行根目录脚本：
+
+```bash
+python run.py --file data/demo.bpmn
+python run.py --file data/demo.bpmn --seed 42
+```
+
+执行后会生成：
+
+- `output/events_demo.csv`
+- `output/resource_timeline_demo.csv`
+- `output/resource_summary_demo.csv`
 
 ## 输出文件
 
-程序会固定在 `output/` 目录生成文件，文件名会附带输入文件名的 stem。比如输入 `data/demo.bpmn`，会生成：
+程序会固定在 `output/` 目录生成文件，比如输入 `data/demo.bpmn`，会生成：
 
 - `events_demo.csv`：实体事件日志
 - `resource_timeline_demo.csv`：资源占用时间线
@@ -80,7 +109,7 @@ xmake run flux --input data/demo.bpmn --seed 42
 - `_taskType=delay`
 - `_distributionType`
 
-如果任务需要资源，还可以提供：
+如果任务需要资源，必须提供：
 
 - `_resourceStrategy=all|any`
 

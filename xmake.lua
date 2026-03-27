@@ -5,13 +5,13 @@ set_languages("cxx20")
 set_encodings("utf-8")
 
 add_rules("mode.debug", "mode.release")
-add_requires("entt", "pugixml", "spdlog", "magic_enum", "catch2", "argparse")
+add_requires("entt", "pugixml", "spdlog", "magic_enum", "catch2", "argparse", "pybind11")
 
 target("flux-lib")
     set_kind("static")
     add_includedirs("src", {public = true})
     add_packages("entt", "pugixml", "spdlog", "magic_enum", {public = true})
-    add_files("src/*.cpp|main.cpp")
+    add_files("src/*.cpp|main.cpp|python_module.cpp")
 
 target("flux")
     set_kind("binary")
@@ -19,6 +19,12 @@ target("flux")
     add_packages("argparse")
     add_deps("flux-lib")
     add_files("src/main.cpp")
+
+target("_native")
+    add_rules("python.module")
+    add_deps("flux-lib")
+    add_packages("pybind11")
+    add_files("src/python_module.cpp")
 
 target("test")
     set_kind("binary")

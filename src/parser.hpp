@@ -10,7 +10,7 @@ namespace flux
 class BpmnParser
 {
 public:
-    SimulationModel parse(const std::filesystem::path& input_path) const;
+    SimulationModel parse(const std::filesystem::path& file_path) const;
 
 private:
     class ParseSession;

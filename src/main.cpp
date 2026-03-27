@@ -6,16 +6,14 @@
 #include <argparse/argparse.hpp>
 #include <spdlog/spdlog.h>
 
-#include "engine.hpp"
-#include "parser.hpp"
-#include "reporter.hpp"
+#include "app.hpp"
 
 namespace
 {
 
 struct CliOptions
 {
-    std::filesystem::path input_path;
+    std::filesystem::path file_path;
     std::uint64_t seed{42};
 };
 
@@ -25,7 +23,7 @@ CliOptions parse_args(int argc, char** argv)
 
     argparse::ArgumentParser program("flux", "0.1.0");
 
-    program.add_argument("--input")
+    program.add_argument("--file")
         .required()
         .help("Path to the BPMN model to simulate.");
 
@@ -36,7 +34,7 @@ CliOptions parse_args(int argc, char** argv)
 
     program.parse_args(argc, argv);
 
-    options.input_path = program.get<std::string>("--input");
+    options.file_path = program.get<std::string>("--file");
     options.seed = program.get<std::uint64_t>("--seed");
     return options;
 }
@@ -48,22 +46,7 @@ int main(int argc, char** argv)
     try
     {
         const auto cli = parse_args(argc, argv);
-        const auto output_dir = std::filesystem::path{"output"};
-        const auto input_stem = cli.input_path.stem().string();
-        flux::BpmnParser parser;
-        const auto model = parser.parse(cli.input_path);
-
-        flux::SimulationEngine engine;
-        const auto result = engine.run(model, flux::SimulationOptions{cli.seed});
-        flux::write_reports(output_dir, result.reports, input_stem);
-
-        spdlog::info("Simulation complete.");
-        spdlog::info("Input: {}", cli.input_path.string());
-        spdlog::info("Output directory: {}", output_dir.string());
-        spdlog::info("Seed: {}", cli.seed);
-        spdlog::info("Generated entities: {}", result.generated_entities);
-        spdlog::info("Completed entities: {}", result.completed_entities);
-        spdlog::info("Simulation horizon: {:.3f}", result.simulation_horizon);
+        flux::run(cli.file_path.string(), cli.seed);
         return 0;
     }
     catch (const std::exception& exception)

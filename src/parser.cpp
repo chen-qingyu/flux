@@ -189,6 +189,42 @@ private:
         throw std::runtime_error(context + " uses unsupported distribution type.");
     }
 
+    void validate_distribution(const DistributionSpec& distribution, const std::string& context) const
+    {
+        switch (distribution.type)
+        {
+            case DistributionType::Static:
+                if (distribution.first <= 0.0)
+                {
+                    throw std::runtime_error(context + " property '_staticInterval' must be greater than zero.");
+                }
+                return;
+            case DistributionType::Uniform:
+                if (distribution.first > distribution.second)
+                {
+                    throw std::runtime_error(context + " property '_min' must be less than or equal to '_max'.");
+                }
+                if (distribution.second <= 0.0)
+                {
+                    throw std::runtime_error(context + " property '_max' must be greater than zero.");
+                }
+                return;
+            case DistributionType::Exponential:
+                if (distribution.first <= 0.0)
+                {
+                    throw std::runtime_error(context + " property '_mean' must be greater than zero.");
+                }
+                return;
+            case DistributionType::Normal:
+            case DistributionType::LogNormal:
+                if (distribution.second <= 0.0)
+                {
+                    throw std::runtime_error(context + " property '_standardDeviation' must be greater than zero.");
+                }
+                return;
+        }
+    }
+
     [[nodiscard]] GeneratorSpec read_generator_spec(const pugi::xml_node& node) const
     {
         const auto properties = read_properties(node);
@@ -206,13 +242,10 @@ private:
         const auto properties = read_properties(node);
         const auto context = "Task '" + read_required_attribute(node, "id", "Task") + "'";
 
-        if (const auto found = properties.find("_taskType"); found != properties.end())
+        const auto task_type = lower_copy(read_required_text(properties, "_taskType", context));
+        if (task_type != "delay")
         {
-            const auto task_type = lower_copy(found->second);
-            if (task_type != "delay")
-            {
-                throw std::runtime_error(context + " uses unsupported _taskType '" + found->second + "'. Only 'delay' is supported.");
-            }
+            throw std::runtime_error(context + " uses unsupported _taskType '" + task_type + "'. Only 'delay' is supported.");
         }
 
         TaskSpec task;
@@ -220,10 +253,6 @@ private:
         if (properties.contains("_resourceStrategy"))
         {
             task.resource_strategy = read_required_enum<ResourceStrategy>(properties, "_resourceStrategy", context);
-        }
-        else
-        {
-            task.resource_strategy = ResourceStrategy::None;
         }
 
         return task;
@@ -234,13 +263,10 @@ private:
         const auto properties = read_properties(node);
         const auto context = "Resource '" + read_required_attribute(node, "id", "Resource") + "'";
 
-        if (const auto found = properties.find("_resourceType"); found != properties.end())
+        const auto resource_type = lower_copy(read_required_text(properties, "_resourceType", context));
+        if (resource_type != "resource")
         {
-            const auto resource_type = lower_copy(found->second);
-            if (resource_type != "resource")
-            {
-                throw std::runtime_error(context + " uses unsupported _resourceType '" + found->second + "'.");
-            }
+            throw std::runtime_error(context + " uses unsupported _resourceType '" + resource_type + "'.");
         }
 
         ResourceDefinition definition;
@@ -467,6 +493,7 @@ private:
                     {
                         throw std::runtime_error("Start event '" + node_id + "' must have outgoing sequence flow.");
                     }
+                    validate_distribution(definition.generator->interval_distribution, "Start event '" + node_id + "'");
                     break;
                 case NodeType::Task:
                     if (!definition.task.has_value())
@@ -476,6 +503,11 @@ private:
                     if (!model_.outgoing.contains(node_id) || model_.outgoing.at(node_id).empty())
                     {
                         throw std::runtime_error("Task '" + node_id + "' must have outgoing sequence flow.");
+                    }
+                    validate_distribution(definition.task->duration_distribution, "Task '" + node_id + "'");
+                    if (model_.task_resources.contains(node_id) && !model_.task_resources.at(node_id).empty() && !definition.task->resource_strategy.has_value())
+                    {
+                        throw std::runtime_error("Task '" + node_id + "' must provide '_resourceStrategy' when resources are associated.");
                     }
                     break;
                 case NodeType::EndEvent:

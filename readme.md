@@ -20,7 +20,7 @@
 支持的能力：
 
 - 固定随机种子，结果可复现
-- 资源策略：`None`、`All`、`Any`
+- 资源策略：`All`、`Any`
 - 网关语义：`XOR`、`AND`
 - 输出三份报表：`events.csv`、`resource_timeline.csv`、`resource_summary.csv`
 
@@ -83,7 +83,7 @@ xmake run flux --input data/demo.bpmn --output output --seed 42
 
 如果任务需要资源，还可以提供：
 
-- `_resourceStrategy=none|all|any`
+- `_resourceStrategy=all|any`
 
 然后再通过 `association` 把任务连到 `dataStoreReference`。
 

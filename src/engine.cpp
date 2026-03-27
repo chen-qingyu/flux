@@ -398,8 +398,19 @@ public:
 
                 const auto& node = flux::node(model_, it->task_id);
                 const auto required = task_resources(it->task_id);
-                const auto allocation = allocate_resources_if_possible(it->task_id, node.task->resource_strategy);
-                if (!required.empty() && allocation.empty())
+                if (required.empty())
+                {
+                    const auto token_entity = it->token;
+                    const auto arrival_time = it->arrival_time;
+                    it = pending_requests_.erase(it);
+                    refresh_all_queue_lengths();
+                    start_task(token_entity, node, time, {}, time - arrival_time);
+                    progress = true;
+                    break;
+                }
+
+                const auto allocation = allocate_resources_if_possible(it->task_id, node.task->resource_strategy.value());
+                if (allocation.empty())
                 {
                     ++it;
                     continue;
@@ -617,8 +628,14 @@ void SimulationEngine::handle_arrive_node(RunState& state, const ScheduledEvent&
         const auto requested_resources = state.task_resources(node.id);
         state.log_event(event.time, token_component, node, "task_arrive");
 
-        const auto allocation = state.allocate_resources_if_possible(node.id, node.task->resource_strategy);
-        if (!requested_resources.empty() && allocation.empty())
+        if (requested_resources.empty())
+        {
+            state.start_task(event.token, node, event.time, {}, 0.0);
+            return;
+        }
+
+        const auto allocation = state.allocate_resources_if_possible(node.id, node.task->resource_strategy.value());
+        if (allocation.empty())
         {
             state.enqueue_request(PendingTaskRequest{state.next_order(), event.token, node.id, event.time});
             state.log_event(event.time, token_component, node, "task_waiting_for_resources");

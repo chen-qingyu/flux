@@ -5,12 +5,12 @@ set_languages("cxx20")
 set_encodings("utf-8")
 
 add_rules("mode.debug", "mode.release")
-add_requires("entt", "pugixml", "spdlog", "magic_enum", "catch2", "nlohmann_json", "argparse")
+add_requires("entt", "pugixml", "spdlog", "magic_enum", "catch2", "argparse")
 
 target("flux-lib")
     set_kind("static")
     add_includedirs("src", {public = true})
-    add_packages("entt", "pugixml", "spdlog", "magic_enum", "nlohmann_json", {public = true})
+    add_packages("entt", "pugixml", "spdlog", "magic_enum", {public = true})
     add_files("src/*.cpp|main.cpp")
 
 target("flux")

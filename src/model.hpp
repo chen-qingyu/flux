@@ -28,7 +28,6 @@ enum class DistributionType
 
 enum class ResourceStrategy
 {
-    None,
     All,
     Any,
 };
@@ -50,7 +49,7 @@ struct GeneratorSpec
 struct TaskSpec
 {
     DistributionSpec duration_distribution{};
-    ResourceStrategy resource_strategy{ResourceStrategy::None};
+    std::optional<ResourceStrategy> resource_strategy;
 };
 
 struct NodeDefinition

@@ -47,20 +47,19 @@ xmake run flux --input data/demo.bpmn
 完整写法：
 
 ```bash
-xmake run flux --input data/demo.bpmn --output output --seed 42
+xmake run flux --input data/demo.bpmn --seed 42
 ```
 
 - `--input`: 输入文件，必填
-- `--output`: 输出目录，可省略，默认是 `output`
 - `--seed`: 随机种子，可省略，默认是 `42`
 
 ## 输出文件
 
-程序会在输出目录生成：
+程序会固定在 `output/` 目录生成文件，文件名会附带输入文件名的 stem。比如输入 `data/demo.bpmn`，会生成：
 
-- `events.csv`：实体事件日志
-- `resource_timeline.csv`：资源占用时间线
-- `resource_summary.csv`：资源利用率和等待统计
+- `events_demo.csv`：实体事件日志
+- `resource_timeline_demo.csv`：资源占用时间线
+- `resource_summary_demo.csv`：资源利用率和等待统计
 
 ## 扩展属性怎么写
 

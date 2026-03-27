@@ -52,6 +52,6 @@ struct ReportBundle
     std::vector<ResourceSummaryRow> resource_summary_rows;
 };
 
-void write_reports(const std::filesystem::path& output_directory, const ReportBundle& bundle);
+void write_reports(const std::filesystem::path& output_directory, const ReportBundle& bundle, const std::string& file_suffix = "");
 
 } // namespace flux

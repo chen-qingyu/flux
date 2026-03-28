@@ -6,11 +6,17 @@ set_encodings("utf-8")
 
 add_rules("mode.debug", "mode.release")
 add_requires("entt", "pugixml", "spdlog", "magic_enum", "catch2", "argparse", "pybind11")
+if is_plat("linux") then
+    add_requireconfs("pybind11.python", {override = true, configs = {headeronly = true}})
+end
 
 target("flux-lib")
     set_kind("static")
     add_packages("entt", "pugixml", "spdlog", "magic_enum", {public = true})
     add_files("src/core/*.cpp")
+    if is_plat("linux") then
+        add_cxflags("-fPIC")
+    end
 
 target("flux")
     set_kind("binary")

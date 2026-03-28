@@ -7,9 +7,8 @@ import flux
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("flux")
     parser.add_argument(
-        "--file",
-        required=True,
-        help="Path to the BPMN model to simulate.",
+        "file",
+        help="Path to the BPMN file to simulate.",
     )
     parser.add_argument(
         "--seed",

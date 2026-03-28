@@ -47,16 +47,16 @@ xmake build _native
 运行：
 
 ```bash
-xmake run flux --file data/demo.bpmn
+xmake run flux data/demo.bpmn
 ```
 
 完整写法：
 
 ```bash
-xmake run flux --file data/demo.bpmn --seed 42
+xmake run flux data/demo.bpmn --seed 42
 ```
 
-- `--file`: 输入文件，必填
+- `file`: 输入文件，位置参数，必填
 - `--seed`: 随机种子，可省略，默认是 `42`
 
 ## Python SDK
@@ -72,8 +72,8 @@ xmake run flux --file data/demo.bpmn --seed 42
 如果用户已经通过 `pip install flux-*.whl|tar.gz` 安装了 SDK，也可以直接运行根目录脚本：
 
 ```bash
-python run.py --file data/demo.bpmn
-python run.py --file data/demo.bpmn --seed 42
+python run.py data/demo.bpmn
+python run.py data/demo.bpmn --seed 42
 ```
 
 执行后会生成：

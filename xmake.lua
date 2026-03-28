@@ -9,9 +9,8 @@ add_requires("entt", "pugixml", "spdlog", "magic_enum", "catch2", "argparse", "p
 
 target("flux-lib")
     set_kind("static")
-    add_includedirs("src", {public = true})
     add_packages("entt", "pugixml", "spdlog", "magic_enum", {public = true})
-    add_files("src/*.cpp|main.cpp|python_module.cpp")
+    add_files("src/core/*.cpp")
 
 target("flux")
     set_kind("binary")
@@ -30,6 +29,5 @@ target("test")
     set_kind("binary")
     set_rundir(".")
     add_deps("flux-lib")
-    add_includedirs("src")
     add_packages("catch2")
     add_files("tests/*.cpp")

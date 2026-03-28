@@ -5,7 +5,7 @@
 #include <stdexcept>
 #include <string>
 
-#include <spdlog/fmt/fmt.h>
+#include <spdlog/spdlog.h>
 
 namespace flux
 {

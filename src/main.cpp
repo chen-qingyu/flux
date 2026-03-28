@@ -6,7 +6,7 @@
 #include <argparse/argparse.hpp>
 #include <spdlog/spdlog.h>
 
-#include "app.hpp"
+#include "core/app.hpp"
 
 int main(int argc, char** argv)
 {

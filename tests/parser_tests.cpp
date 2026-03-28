@@ -1,7 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "test_support.hpp"
-#include "tools.hpp"
 
 TEST_CASE("Parser reads any-resource task model", "[parser][any]")
 {

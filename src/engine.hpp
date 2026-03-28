@@ -12,12 +12,12 @@
 namespace flux
 {
 
-struct SimulationOptions
+struct Options
 {
     std::uint64_t seed{42};
 };
 
-struct SimulationResult
+struct Result
 {
     ReportBundle reports;
     double simulation_horizon{0.0};
@@ -25,10 +25,10 @@ struct SimulationResult
     std::size_t completed_entities{0};
 };
 
-class SimulationEngine
+class Engine
 {
 public:
-    SimulationResult run(const SimulationModel& model, const SimulationOptions& options = {});
+    Result run(const Model& model, const Options& options = {});
 
 private:
     struct ScheduledEvent;

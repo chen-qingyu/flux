@@ -136,7 +136,7 @@ private:
 
 } // namespace
 
-struct SimulationEngine::ScheduledEvent
+struct Engine::ScheduledEvent
 {
     double time{0.0};
     std::uint64_t order{0};
@@ -145,10 +145,10 @@ struct SimulationEngine::ScheduledEvent
     entt::entity token{entt::null};
 };
 
-class SimulationEngine::RunState
+class Engine::RunState
 {
 public:
-    RunState(const SimulationModel& model, SimulationResult& result, std::uint64_t seed)
+    RunState(const Model& model, Result& result, std::uint64_t seed)
         : model_(model)
         , result_(result)
         , sampler_(seed)
@@ -249,7 +249,7 @@ public:
         });
     }
 
-    [[nodiscard]] const SimulationModel& model() const
+    [[nodiscard]] const Model& model() const
     {
         return model_;
     }
@@ -527,8 +527,8 @@ private:
     }
 
     entt::registry registry_;
-    const SimulationModel& model_;
-    SimulationResult& result_;
+    const Model& model_;
+    Result& result_;
     DistributionSampler sampler_;
     std::priority_queue<ScheduledEvent, std::vector<ScheduledEvent>, ScheduledEventCompare> queue_;
     std::deque<PendingTaskRequest> pending_requests_;
@@ -540,9 +540,9 @@ private:
     std::size_t business_sequence_{0};
 };
 
-SimulationResult SimulationEngine::run(const SimulationModel& model, const SimulationOptions& options)
+Result Engine::run(const Model& model, const Options& options)
 {
-    SimulationResult result;
+    Result result;
     RunState state(model, result, options.seed);
 
     schedule_start_events(state);
@@ -557,7 +557,7 @@ SimulationResult SimulationEngine::run(const SimulationModel& model, const Simul
     return result;
 }
 
-void SimulationEngine::schedule_start_events(RunState& state) const
+void Engine::schedule_start_events(RunState& state) const
 {
     for (const auto& start_id : state.model().start_node_ids)
     {
@@ -574,7 +574,7 @@ void SimulationEngine::schedule_start_events(RunState& state) const
     }
 }
 
-void SimulationEngine::process_event(RunState& state, const ScheduledEvent& event) const
+void Engine::process_event(RunState& state, const ScheduledEvent& event) const
 {
     switch (event.type)
     {
@@ -593,7 +593,7 @@ void SimulationEngine::process_event(RunState& state, const ScheduledEvent& even
     }
 }
 
-void SimulationEngine::handle_generate_entity(RunState& state, const ScheduledEvent& event) const
+void Engine::handle_generate_entity(RunState& state, const ScheduledEvent& event) const
 {
     const auto& start_node = flux::node(state.model(), event.node_id);
     const auto entity_id = state.next_entity_id(start_node.name, start_node.generator->entity_type);
@@ -613,7 +613,7 @@ void SimulationEngine::handle_generate_entity(RunState& state, const ScheduledEv
     }
 }
 
-void SimulationEngine::handle_arrive_node(RunState& state, const ScheduledEvent& event) const
+void Engine::handle_arrive_node(RunState& state, const ScheduledEvent& event) const
 {
     if (!state.token_valid(event.token))
     {
@@ -668,7 +668,7 @@ void SimulationEngine::handle_arrive_node(RunState& state, const ScheduledEvent&
     }
 }
 
-void SimulationEngine::handle_finish_task(RunState& state, const ScheduledEvent& event) const
+void Engine::handle_finish_task(RunState& state, const ScheduledEvent& event) const
 {
     if (!state.token_valid(event.token) || !state.registry().all_of<ActiveTask>(event.token))
     {
@@ -693,7 +693,7 @@ void SimulationEngine::handle_finish_task(RunState& state, const ScheduledEvent&
     state.schedule(ScheduledEvent{event.time, state.next_order(), ScheduledEventType::ReevaluatePending, {}, entt::null});
 }
 
-void SimulationEngine::handle_parallel_gateway(RunState& state, const ScheduledEvent& event) const
+void Engine::handle_parallel_gateway(RunState& state, const ScheduledEvent& event) const
 {
     if (!state.token_valid(event.token))
     {
@@ -731,7 +731,7 @@ void SimulationEngine::handle_parallel_gateway(RunState& state, const ScheduledE
     continue_parallel_gateway(state, event, outgoing_count, event.token);
 }
 
-void SimulationEngine::continue_parallel_gateway(RunState& state, const ScheduledEvent& event, std::size_t outgoing_count, entt::entity token_entity) const
+void Engine::continue_parallel_gateway(RunState& state, const ScheduledEvent& event, std::size_t outgoing_count, entt::entity token_entity) const
 {
     if (outgoing_count == 0)
     {

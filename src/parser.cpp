@@ -15,10 +15,10 @@
 
 namespace flux
 {
-class BpmnParser::ParseSession
+class Parser::ParseSession
 {
 public:
-    SimulationModel parse(const std::filesystem::path& file_path)
+    Model parse(const std::filesystem::path& file_path)
     {
         pugi::xml_document document;
         const auto path_text = file_path.string();
@@ -550,11 +550,11 @@ private:
         }
     }
 
-    SimulationModel model_;
+    Model model_;
     std::vector<std::pair<std::string, std::string>> associations_;
 };
 
-SimulationModel BpmnParser::parse(const std::filesystem::path& file_path) const
+Model Parser::parse(const std::filesystem::path& file_path) const
 {
     ParseSession session;
     return session.parse(file_path);

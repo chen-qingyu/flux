@@ -75,7 +75,7 @@ struct ResourceDefinition
     int capacity{0};
 };
 
-struct SimulationModel
+struct Model
 {
     std::string process_id;
     std::string process_name;

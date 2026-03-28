@@ -65,6 +65,8 @@ struct PendingTaskRequest
     std::uint64_t order{0};
     entt::entity token{entt::null};
     std::string task_id;
+    const NodeDefinition* node{nullptr};
+    const std::vector<std::string>* required_resources{nullptr};
     double arrival_time{0.0};
 };
 
@@ -274,36 +276,27 @@ public:
         return join_barriers_;
     }
 
-    [[nodiscard]] std::vector<std::string> task_resources(const std::string& task_id) const
+    [[nodiscard]] const std::vector<std::string>& task_resources(const std::string& task_id) const
     {
         if (const auto found = model_.task_resources.find(task_id); found != model_.task_resources.end())
         {
             return found->second;
         }
-        return {};
+        static const std::vector<std::string> empty;
+        return empty;
     }
 
     [[nodiscard]] int queue_length_for_resource(const std::string& resource_id) const
     {
-        int count = 0;
-        for (const auto& request : pending_requests_)
+        if (const auto found = pending_queue_lengths_.find(resource_id); found != pending_queue_lengths_.end())
         {
-            if (!token_valid(request.token))
-            {
-                continue;
-            }
-            const auto required = task_resources(request.task_id);
-            if (std::find(required.begin(), required.end(), resource_id) != required.end())
-            {
-                ++count;
-            }
+            return found->second;
         }
-        return count;
+        return 0;
     }
 
-    [[nodiscard]] std::vector<std::string> allocate_resources_if_possible(const std::string& task_id, ResourceStrategy strategy)
+    [[nodiscard]] std::vector<std::string> allocate_resources_if_possible(const std::vector<std::string>& resource_ids, ResourceStrategy strategy)
     {
-        const auto resource_ids = task_resources(task_id);
         if (resource_ids.empty())
         {
             return {};
@@ -377,53 +370,42 @@ public:
 
     void enqueue_request(PendingTaskRequest request)
     {
+        add_request_queue_counts(request);
         pending_requests_.push_back(std::move(request));
-        refresh_all_queue_lengths();
     }
 
     void reevaluate_pending(double time)
     {
-        bool progress = true;
-        while (progress)
+        std::deque<PendingTaskRequest> remaining_requests;
+        remaining_requests.swap(pending_requests_);
+
+        while (!remaining_requests.empty())
         {
-            progress = false;
-            for (auto it = pending_requests_.begin(); it != pending_requests_.end();)
+            auto request = std::move(remaining_requests.front());
+            remaining_requests.pop_front();
+
+            if (!token_valid(request.token))
             {
-                if (!token_valid(it->token))
-                {
-                    it = pending_requests_.erase(it);
-                    refresh_all_queue_lengths();
-                    continue;
-                }
-
-                const auto& node = flux::node(model_, it->task_id);
-                const auto required = task_resources(it->task_id);
-                if (required.empty())
-                {
-                    const auto token_entity = it->token;
-                    const auto arrival_time = it->arrival_time;
-                    it = pending_requests_.erase(it);
-                    refresh_all_queue_lengths();
-                    start_task(token_entity, node, time, {}, time - arrival_time);
-                    progress = true;
-                    break;
-                }
-
-                const auto allocation = allocate_resources_if_possible(it->task_id, node.task->resource_strategy.value());
-                if (allocation.empty())
-                {
-                    ++it;
-                    continue;
-                }
-
-                const auto token_entity = it->token;
-                const auto arrival_time = it->arrival_time;
-                it = pending_requests_.erase(it);
-                refresh_all_queue_lengths();
-                start_task(token_entity, node, time, allocation, time - arrival_time);
-                progress = true;
-                break;
+                remove_request_queue_counts(request);
+                continue;
             }
+
+            if (request.required_resources == nullptr || request.required_resources->empty())
+            {
+                remove_request_queue_counts(request);
+                start_task(request.token, *request.node, time, {}, time - request.arrival_time);
+                continue;
+            }
+
+            const auto allocation = allocate_resources_if_possible(*request.required_resources, request.node->task->resource_strategy.value());
+            if (allocation.empty())
+            {
+                pending_requests_.push_back(std::move(request));
+                continue;
+            }
+
+            remove_request_queue_counts(request);
+            start_task(request.token, *request.node, time, allocation, time - request.arrival_time);
         }
     }
 
@@ -494,15 +476,41 @@ private:
             const auto entity = registry_.create();
             registry_.emplace<ResourceRuntime>(entity, ResourceRuntime{definition.id, definition.name, definition.capacity, 0, 0.0, 0.0, 0, 0.0, 0});
             resource_entities_.insert_or_assign(resource_id, entity);
+            pending_queue_lengths_.insert_or_assign(resource_id, 0);
         }
     }
 
-    void refresh_all_queue_lengths()
+    void add_request_queue_counts(const PendingTaskRequest& request)
     {
-        for (const auto& resource_id : resource_ids_)
+        if (request.required_resources == nullptr)
         {
+            return;
+        }
+
+        for (const auto& resource_id : *request.required_resources)
+        {
+            auto& queue_length = pending_queue_lengths_[resource_id];
+            ++queue_length;
             auto& runtime = resource_runtime(resource_id);
-            runtime.max_queue_length = std::max(runtime.max_queue_length, queue_length_for_resource(resource_id));
+            runtime.max_queue_length = std::max(runtime.max_queue_length, queue_length);
+        }
+    }
+
+    void remove_request_queue_counts(const PendingTaskRequest& request)
+    {
+        if (request.required_resources == nullptr)
+        {
+            return;
+        }
+
+        for (const auto& resource_id : *request.required_resources)
+        {
+            auto found = pending_queue_lengths_.find(resource_id);
+            if (found == pending_queue_lengths_.end())
+            {
+                continue;
+            }
+            found->second = std::max(0, found->second - 1);
         }
     }
 
@@ -534,6 +542,7 @@ private:
     std::deque<PendingTaskRequest> pending_requests_;
     std::unordered_map<std::string, JoinBarrierState> join_barriers_;
     std::unordered_map<std::string, entt::entity> resource_entities_;
+    std::unordered_map<std::string, int> pending_queue_lengths_;
     std::vector<std::string> resource_ids_;
     double current_time_{0.0};
     std::uint64_t next_order_{0};
@@ -625,7 +634,7 @@ void Engine::handle_arrive_node(RunState& state, const ScheduledEvent& event) co
 
     if (node.type == NodeType::Task)
     {
-        const auto requested_resources = state.task_resources(node.id);
+        const auto& requested_resources = state.task_resources(node.id);
         state.log_event(event.time, token_component, node, "task_arrive");
 
         if (requested_resources.empty())
@@ -634,10 +643,10 @@ void Engine::handle_arrive_node(RunState& state, const ScheduledEvent& event) co
             return;
         }
 
-        const auto allocation = state.allocate_resources_if_possible(node.id, node.task->resource_strategy.value());
+        const auto allocation = state.allocate_resources_if_possible(requested_resources, node.task->resource_strategy.value());
         if (allocation.empty())
         {
-            state.enqueue_request(PendingTaskRequest{state.next_order(), event.token, node.id, event.time});
+            state.enqueue_request(PendingTaskRequest{state.next_order(), event.token, node.id, &node, &requested_resources, event.time});
             state.log_event(event.time, token_component, node, "task_waiting_for_resources");
             return;
         }

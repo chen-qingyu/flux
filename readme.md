@@ -24,63 +24,53 @@
 - 网关语义：`XOR`、`AND`
 - 输出三份报表：`events.csv`、`resource_timeline.csv`、`resource_summary.csv`
 
-限制：
+注意事项：
 
 - 输入格式目前只有 BPMN
-- 任务目前只支持 `delay`
-- 时间是无量纲时间，不绑定秒或分钟
+- 时间是无量纲时间
 
 ## 构建和运行
 
-构建：
+构建所有二进制目标：
 
 ```bash
 xmake build
-```
-
-如果要构建 Python SDK：
-
-```bash
-xmake build _native
 ```
 
 运行：
 
 ```bash
 xmake run flux data/demo.bpmn
-```
-
-完整写法：
-
-```bash
 xmake run flux data/demo.bpmn --seed 42
 ```
 
 - `file`: 输入文件，位置参数，必填
 - `--seed`: 随机种子，可省略，默认是 `42`
 
-## Python SDK
+打包 Python SDK：
 
-项目现在同时提供本地 Python SDK，包名是 `flux`，支持 Python `3.9+`。
+```bash
+python -m build python
+```
 
-当前 Python SDK 只提供一个函数：
+安装 Python SDK：
+
+```bash
+pip install python/dist/flux-*.whl
+```
+
+包名是 `flux`，支持 Python `3.9+`。
 
 - `flux.run(file, seed=42)`
 
-它的行为和 CLI 一致：读取 BPMN，执行仿真，并把 CSV 固定写到 `output/`。
+它的行为和 CLI 一致：读取 BPMN，执行仿真，并把 CSV 写到 `output/`。
 
-如果用户已经通过 `pip install flux-*.whl|tar.gz` 安装了 SDK，也可以直接运行根目录脚本：
+可以直接运行根目录脚本：
 
 ```bash
 python run.py data/demo.bpmn
 python run.py data/demo.bpmn --seed 42
 ```
-
-执行后会生成：
-
-- `output/events_demo.csv`
-- `output/resource_timeline_demo.csv`
-- `output/resource_summary_demo.csv`
 
 ## 输出文件
 
@@ -90,7 +80,9 @@ python run.py data/demo.bpmn --seed 42
 - `resource_timeline_demo.csv`：资源占用时间线
 - `resource_summary_demo.csv`：资源利用率和等待统计
 
-## 扩展属性怎么写
+输出文件名规则是：`<报表名>_<输入文件名>.csv`。
+
+## 扩展属性
 
 仿真参数都放在 BPMN 的 `extensionElements` 里，当前按 `camunda:properties` 读取。
 
@@ -143,13 +135,30 @@ data/
   demo.bpmn        示例 BPMN
   tests/           测试 BPMN
   golden/          golden CSV
+python/
+  README.md        Python SDK 说明
+  flux/            Python SDK 入口
+  setup.py         Python SDK 打包脚本
 src/
-  main.cpp         CLI 入口
-  model.hpp        数据模型
-  parser.hpp/.cpp  BPMN 解析
-  engine.hpp/.cpp  仿真运行时
-  reporter.hpp/.cpp CSV 输出
-  tools.hpp/.cpp   常用模型访问工具
+  main.cpp          CLI 入口
+  python_module.cpp Python 绑定入口
+  core/
+    app.hpp/.cpp       顶层调度
+    model.hpp          数据模型
+    parser.hpp/.cpp    输入解析
+    engine.hpp/.cpp    仿真引擎
+    reporter.hpp/.cpp  报表输出
+    tools.hpp/.cpp     常用工具
 tests/
-  *_tests.cpp   测试代码
+  *_tests.cpp      测试代码
+  test_support.hpp 辅助工具
 ```
+
+## 实现说明
+
+引擎对高拥塞场景做了两层优化：
+
+- 资源等待队列长度采用增量维护，不再反复全量扫描 pending 请求。
+- 对只依赖单个资源的任务，运行时会进入该资源自己的 FIFO 等待队列；资源释放后只定向唤醒该资源队列，而不是重新扫描所有等待请求。
+
+这两点能显著改善单资源、高并发排队场景下的性能。

@@ -124,6 +124,8 @@ python run.py data/demo.bpmn --seed 42
 - `Normal`: 正态分布，属性是 `_mean` 和 `_standardDeviation`
 - `LogNormal`: 对数正态分布，属性是 `_mean` 和 `_standardDeviation`
 
+分布参数在解析阶段会直接校验，时间语义要求采样结果非负，因此解析层会拒绝明显落到负时间域的输入。另外，`Normal` 当前为了性能采取运行时负值截到 `0` 的处理，而不是重采样。
+
 ## 最小 BPMN 示例
 
 仓库里的 [data/demo.bpmn](data/demo.bpmn) 是一个可直接运行的完整例子，表达的是：每隔 `10` 个时间单位生成 1 个 `customer`，一共生成 `3` 个；每个实体进入一个任务，任务耗时服从 `uniform(10, 20)`；任务需要 1 个柜员资源。

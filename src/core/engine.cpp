@@ -87,20 +87,6 @@ public:
     {
     }
 
-    double sample_positive(const DistributionSpec& spec)
-    {
-        for (int attempt = 0; attempt < 16; ++attempt)
-        {
-            const auto value = sample(spec);
-            if (value > 0.0)
-            {
-                return value;
-            }
-        }
-        return 0.001;
-    }
-
-private:
     double sample(const DistributionSpec& spec)
     {
         switch (spec.type)
@@ -120,7 +106,8 @@ private:
             case DistributionType::Normal:
             {
                 std::normal_distribution<double> distribution(spec.first, spec.second);
-                return distribution(generator_);
+                const auto value = distribution(generator_);
+                return value >= 0.0 ? value : 0.0;
             }
             case DistributionType::LogNormal:
             {
@@ -132,6 +119,7 @@ private:
         return 0.0;
     }
 
+private:
     std::mt19937_64 generator_;
 };
 
@@ -217,9 +205,9 @@ public:
         }
     }
 
-    double sample_positive(const DistributionSpec& spec)
+    double sample(const DistributionSpec& spec)
     {
-        return sampler_.sample_positive(spec);
+        return sampler_.sample(spec);
     }
 
     void log_event(double time, const ProcessToken& token_component, const NodeDefinition& node, const std::string& event_type)
@@ -495,7 +483,7 @@ public:
         apply_allocation(allocation, time, wait_time, token_component.entity_id, node.id);
         registry_.emplace_or_replace<ActiveTask>(token_entity, ActiveTask{node.id, time - wait_time, time, allocation});
 
-        const auto duration = sample_positive(node.task->duration_distribution);
+        const auto duration = sample(node.task->duration_distribution);
         log_event(time, token_component, node, "task_start");
 
         schedule(ScheduledEvent{time + duration, next_order(), ScheduledEventType::FinishTask, node.id, token_entity});
@@ -646,7 +634,7 @@ void Engine::schedule_start_events(RunState& state) const
             state.schedule(ScheduledEvent{next_time, state.next_order(), ScheduledEventType::GenerateEntity, start_id, entt::null});
             if (index + 1 < start_node.generator->entity_count)
             {
-                next_time += state.sample_positive(start_node.generator->interval_distribution);
+                next_time += state.sample(start_node.generator->interval_distribution);
             }
         }
     }

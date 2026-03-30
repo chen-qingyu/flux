@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
@@ -113,7 +114,13 @@ private:
     {
         if (const auto found = properties.find(key); found != properties.end())
         {
-            return std::stod(found->second);
+            std::size_t parsed_size = 0;
+            const auto parsed = std::stod(found->second, &parsed_size);
+            if (parsed_size != found->second.size() || !std::isfinite(parsed))
+            {
+                throw std::runtime_error(context + " property '" + key + "' must be a finite number.");
+            }
+            return parsed;
         }
         throw std::runtime_error(context + " is missing required numeric property '" + key + "'.");
     }
@@ -194,34 +201,43 @@ private:
         switch (distribution.type)
         {
             case DistributionType::Static:
-                if (distribution.first <= 0.0)
+                if (distribution.first < 0.0)
                 {
-                    throw std::runtime_error(context + " property '_staticInterval' must be greater than zero.");
+                    throw std::runtime_error(context + " property '_staticInterval' must be non-negative.");
                 }
-                return;
+                break;
             case DistributionType::Uniform:
+                if (distribution.first < 0.0)
+                {
+                    throw std::runtime_error(context + " property '_min' must be non-negative.");
+                }
+                if (distribution.second < 0.0)
+                {
+                    throw std::runtime_error(context + " property '_max' must be non-negative.");
+                }
                 if (distribution.first > distribution.second)
                 {
                     throw std::runtime_error(context + " property '_min' must be less than or equal to '_max'.");
                 }
-                if (distribution.second <= 0.0)
-                {
-                    throw std::runtime_error(context + " property '_max' must be greater than zero.");
-                }
-                return;
+                break;
             case DistributionType::Exponential:
                 if (distribution.first <= 0.0)
                 {
                     throw std::runtime_error(context + " property '_mean' must be greater than zero.");
                 }
-                return;
+                break;
             case DistributionType::Normal:
+                if (distribution.first < 0.0)
+                {
+                    throw std::runtime_error(context + " property '_mean' must be non-negative.");
+                }
+                [[fallthrough]];
             case DistributionType::LogNormal:
                 if (distribution.second <= 0.0)
                 {
                     throw std::runtime_error(context + " property '_standardDeviation' must be greater than zero.");
                 }
-                return;
+                break;
         }
     }
 

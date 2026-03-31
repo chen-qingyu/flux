@@ -28,8 +28,6 @@ enum class ScheduledEventType
     GenerateEntity,
     ArriveNode,
     FinishTask,
-    ReevaluatePending,
-    WakeResourceQueue,
 };
 
 struct ProcessToken
@@ -67,6 +65,20 @@ struct PendingTaskRequest
     entt::entity token{entt::null};
     std::string task_id;
     double arrival_time{0.0};
+};
+
+struct SingleResourceCandidate
+{
+    std::uint64_t order{0};
+    std::string resource_id;
+};
+
+struct SingleResourceCandidateCompare
+{
+    bool operator()(const SingleResourceCandidate& left, const SingleResourceCandidate& right) const
+    {
+        return left.order > right.order;
+    }
 };
 
 struct JoinBarrierState
@@ -153,6 +165,11 @@ public:
     [[nodiscard]] bool has_events() const
     {
         return !queue_.empty();
+    }
+
+    [[nodiscard]] double next_event_time() const
+    {
+        return queue_.top().time;
     }
 
     ScheduledEvent next_event()
@@ -263,6 +280,11 @@ public:
         return join_barriers_;
     }
 
+    [[nodiscard]] bool has_pending_requests() const
+    {
+        return !pending_requests_.empty() || !single_resource_pending_requests_.empty();
+    }
+
     [[nodiscard]] const std::vector<std::string>& task_resources(const std::string& task_id) const
     {
         if (const auto found = model_.task_resources.find(task_id); found != model_.task_resources.end())
@@ -355,36 +377,122 @@ public:
                 queue_length,
                 entity_id,
                 task_id);
+
+            push_single_resource_candidate(resource_id);
+        }
+
+        if (has_pending_requests())
+        {
+            pending_resolution_needed_ = true;
         }
     }
 
     void enqueue_request(PendingTaskRequest request)
     {
         note_request_enqueued(request);
+        pending_resolution_needed_ = true;
 
         const auto& resource_ids = task_resources(request.task_id);
         if (resource_ids.size() == 1)
         {
-            single_resource_pending_requests_[resource_ids.front()].push_back(std::move(request));
+            auto& requests = single_resource_pending_requests_[resource_ids.front()];
+            const auto was_empty = requests.empty();
+            requests.push_back(std::move(request));
+            if (was_empty)
+            {
+                push_single_resource_candidate(resource_ids.front());
+            }
             return;
         }
 
         pending_requests_.push_back(std::move(request));
     }
 
-    void reevaluate_pending(double time)
+    void resolve_pending(double time)
     {
-        reevaluate_pending_scheduled_ = false;
-        if (pending_requests_.empty())
+        if (!pending_resolution_needed_)
         {
             return;
         }
 
-        std::deque<PendingTaskRequest> remaining_requests;
-        while (!pending_requests_.empty())
+        pending_resolution_needed_ = false;
+
+        auto remaining_requests = std::deque<PendingTaskRequest>{};
+        auto scan_requests = std::move(pending_requests_);
+        auto multi_candidate = std::optional<PendingTaskRequest>{};
+
+        auto load_multi_candidate = [&]()
         {
-            auto request = std::move(pending_requests_.front());
-            pending_requests_.pop_front();
+            while (true)
+            {
+                if (multi_candidate.has_value())
+                {
+                    if (!token_valid(multi_candidate->token))
+                    {
+                        note_request_dequeued(*multi_candidate);
+                        multi_candidate.reset();
+                        continue;
+                    }
+
+                    const auto& node = flux::node(model_, multi_candidate->task_id);
+                    const auto allocation = allocate_resources_if_possible(multi_candidate->task_id, node.task->resource_strategy.value());
+                    if (!allocation.empty())
+                    {
+                        return;
+                    }
+
+                    remaining_requests.push_back(std::move(*multi_candidate));
+                    multi_candidate.reset();
+                    continue;
+                }
+
+                if (scan_requests.empty())
+                {
+                    return;
+                }
+
+                auto request = std::move(scan_requests.front());
+                scan_requests.pop_front();
+                if (!token_valid(request.token))
+                {
+                    note_request_dequeued(request);
+                    continue;
+                }
+
+                const auto& node = flux::node(model_, request.task_id);
+                const auto allocation = allocate_resources_if_possible(request.task_id, node.task->resource_strategy.value());
+                if (allocation.empty())
+                {
+                    remaining_requests.push_back(std::move(request));
+                    continue;
+                }
+
+                multi_candidate = std::move(request);
+                return;
+            }
+        };
+
+        while (true)
+        {
+            load_multi_candidate();
+            const auto single_candidate = next_single_resource_candidate();
+            const auto has_multi_candidate = multi_candidate.has_value();
+
+            if (!single_candidate.has_value() && !has_multi_candidate)
+            {
+                break;
+            }
+
+            const auto choose_single = single_candidate.has_value() && (!has_multi_candidate || single_candidate->order < multi_candidate->order);
+
+            if (choose_single)
+            {
+                start_single_resource_request(single_candidate->resource_id, time);
+                continue;
+            }
+
+            auto request = std::move(*multi_candidate);
+            multi_candidate.reset();
 
             if (!token_valid(request.token))
             {
@@ -393,14 +501,6 @@ public:
             }
 
             const auto& node = flux::node(model_, request.task_id);
-            const auto& required_resources = task_resources(request.task_id);
-            if (required_resources.empty())
-            {
-                note_request_dequeued(request);
-                start_task(request.token, node, time, {}, time - request.arrival_time);
-                continue;
-            }
-
             const auto allocation = allocate_resources_if_possible(request.task_id, node.task->resource_strategy.value());
             if (allocation.empty())
             {
@@ -412,69 +512,18 @@ public:
             start_task(request.token, node, time, allocation, time - request.arrival_time);
         }
 
+        if (multi_candidate.has_value())
+        {
+            remaining_requests.push_back(std::move(*multi_candidate));
+        }
+
+        while (!scan_requests.empty())
+        {
+            remaining_requests.push_back(std::move(scan_requests.front()));
+            scan_requests.pop_front();
+        }
+
         pending_requests_ = std::move(remaining_requests);
-    }
-
-    void process_single_resource_pending(const std::string& resource_id, double time)
-    {
-        resource_queue_wake_scheduled_[resource_id] = false;
-
-        auto found = single_resource_pending_requests_.find(resource_id);
-        if (found == single_resource_pending_requests_.end())
-        {
-            return;
-        }
-
-        auto& requests = found->second;
-        auto& runtime = resource_runtime(resource_id);
-        while (runtime.in_use < runtime.capacity && !requests.empty())
-        {
-            auto request = std::move(requests.front());
-            requests.pop_front();
-
-            if (!token_valid(request.token))
-            {
-                note_request_dequeued(request);
-                continue;
-            }
-
-            const auto& node = flux::node(model_, request.task_id);
-            note_request_dequeued(request);
-            start_task(request.token, node, time, {resource_id}, time - request.arrival_time);
-        }
-
-        if (requests.empty())
-        {
-            single_resource_pending_requests_.erase(found);
-        }
-    }
-
-    void schedule_reevaluate_pending(double time)
-    {
-        if (reevaluate_pending_scheduled_ || pending_requests_.empty())
-        {
-            return;
-        }
-
-        reevaluate_pending_scheduled_ = true;
-        schedule(ScheduledEvent{time, next_order(), ScheduledEventType::ReevaluatePending, {}, entt::null});
-    }
-
-    void schedule_resource_queue_wake(const std::string& resource_id, double time)
-    {
-        const auto found = single_resource_pending_requests_.find(resource_id);
-        if (found == single_resource_pending_requests_.end() || found->second.empty())
-        {
-            return;
-        }
-
-        if (resource_queue_wake_scheduled_[resource_id])
-        {
-            return;
-        }
-
-        resource_queue_wake_scheduled_[resource_id] = true;
-        schedule(ScheduledEvent{time, next_order(), ScheduledEventType::WakeResourceQueue, resource_id, entt::null});
     }
 
     void start_task(entt::entity token_entity, const NodeDefinition& node, double time, const std::vector<std::string>& allocation, double wait_time)
@@ -568,6 +617,107 @@ private:
         }
     }
 
+    void push_single_resource_candidate(const std::string& resource_id)
+    {
+        const auto found = single_resource_pending_requests_.find(resource_id);
+        if (found == single_resource_pending_requests_.end() || found->second.empty())
+        {
+            return;
+        }
+
+        single_resource_candidates_.push(SingleResourceCandidate{found->second.front().order, resource_id});
+    }
+
+    void discard_invalid_single_resource_fronts(const std::string& resource_id)
+    {
+        const auto found = single_resource_pending_requests_.find(resource_id);
+        if (found == single_resource_pending_requests_.end())
+        {
+            return;
+        }
+
+        auto& requests = found->second;
+        auto removed_any = false;
+        while (!requests.empty() && !token_valid(requests.front().token))
+        {
+            note_request_dequeued(requests.front());
+            requests.pop_front();
+            removed_any = true;
+        }
+
+        if (requests.empty())
+        {
+            single_resource_pending_requests_.erase(found);
+            return;
+        }
+
+        if (removed_any)
+        {
+            push_single_resource_candidate(resource_id);
+        }
+    }
+
+    struct SingleResourceCandidateView
+    {
+        std::uint64_t order{0};
+        std::string resource_id;
+    };
+
+    [[nodiscard]] std::optional<SingleResourceCandidateView> next_single_resource_candidate()
+    {
+        while (!single_resource_candidates_.empty())
+        {
+            const auto candidate = single_resource_candidates_.top();
+            discard_invalid_single_resource_fronts(candidate.resource_id);
+
+            const auto found = single_resource_pending_requests_.find(candidate.resource_id);
+            if (found == single_resource_pending_requests_.end())
+            {
+                single_resource_candidates_.pop();
+                continue;
+            }
+
+            const auto& request = found->second.front();
+            if (request.order != candidate.order)
+            {
+                single_resource_candidates_.pop();
+                continue;
+            }
+
+            const auto& runtime = resource_runtime(candidate.resource_id);
+            if (runtime.in_use >= runtime.capacity)
+            {
+                single_resource_candidates_.pop();
+                continue;
+            }
+
+            return SingleResourceCandidateView{request.order, candidate.resource_id};
+        }
+
+        return std::nullopt;
+    }
+
+    void start_single_resource_request(const std::string& resource_id, double time)
+    {
+        auto& requests = single_resource_pending_requests_.at(resource_id);
+        auto request = std::move(requests.front());
+        requests.pop_front();
+        single_resource_candidates_.pop();
+
+        if (requests.empty())
+        {
+            single_resource_pending_requests_.erase(resource_id);
+        }
+        else
+        {
+            push_single_resource_candidate(resource_id);
+        }
+
+        const auto& node = flux::node(model_, request.task_id);
+        note_request_dequeued(request);
+        start_task(request.token, node, time, {resource_id}, time - request.arrival_time);
+    }
+
     ResourceRuntime& resource_runtime(const std::string& resource_id)
     {
         return registry_.get<ResourceRuntime>(resource_entities_.at(resource_id));
@@ -595,15 +745,15 @@ private:
     std::priority_queue<ScheduledEvent, std::vector<ScheduledEvent>, ScheduledEventCompare> queue_;
     std::deque<PendingTaskRequest> pending_requests_;
     std::unordered_map<std::string, std::deque<PendingTaskRequest>> single_resource_pending_requests_;
+    std::priority_queue<SingleResourceCandidate, std::vector<SingleResourceCandidate>, SingleResourceCandidateCompare> single_resource_candidates_;
     std::unordered_map<std::string, JoinBarrierState> join_barriers_;
     std::unordered_map<std::string, entt::entity> resource_entities_;
     std::unordered_map<std::string, int> resource_queue_lengths_;
-    std::unordered_map<std::string, bool> resource_queue_wake_scheduled_;
     std::vector<std::string> resource_ids_;
     double current_time_{0.0};
     std::uint64_t next_order_{0};
     std::size_t business_sequence_{0};
-    bool reevaluate_pending_scheduled_{false};
+    bool pending_resolution_needed_{false};
 };
 
 Result Engine::run(const Model& model, const Options& options)
@@ -615,8 +765,14 @@ Result Engine::run(const Model& model, const Options& options)
 
     while (state.has_events())
     {
-        const auto event = state.next_event();
-        process_event(state, event);
+        const auto batch_time = state.next_event_time();
+        do
+        {
+            const auto event = state.next_event();
+            process_event(state, event);
+        } while (state.has_events() && state.next_event_time() == batch_time);
+
+        state.resolve_pending(batch_time);
     }
 
     state.finalize_resources(result.simulation_horizon);
@@ -652,12 +808,6 @@ void Engine::process_event(RunState& state, const ScheduledEvent& event) const
             break;
         case ScheduledEventType::FinishTask:
             handle_finish_task(state, event);
-            break;
-        case ScheduledEventType::ReevaluatePending:
-            state.reevaluate_pending(event.time);
-            break;
-        case ScheduledEventType::WakeResourceQueue:
-            state.process_single_resource_pending(event.node_id, event.time);
             break;
     }
 }
@@ -703,15 +853,18 @@ void Engine::handle_arrive_node(RunState& state, const ScheduledEvent& event) co
             return;
         }
 
-        const auto allocation = state.allocate_resources_if_possible(node.id, node.task->resource_strategy.value());
-        if (allocation.empty())
+        if (!state.has_pending_requests())
         {
-            state.enqueue_request(PendingTaskRequest{state.next_order(), event.token, node.id, event.time});
-            state.log_event(event.time, token_component, node, "task_waiting_for_resources");
-            return;
+            const auto allocation = state.allocate_resources_if_possible(node.id, node.task->resource_strategy.value());
+            if (!allocation.empty())
+            {
+                state.start_task(event.token, node, event.time, allocation, 0.0);
+                return;
+            }
         }
 
-        state.start_task(event.token, node, event.time, allocation, 0.0);
+        state.enqueue_request(PendingTaskRequest{state.next_order(), event.token, node.id, event.time});
+        state.log_event(event.time, token_component, node, "task_waiting_for_resources");
         return;
     }
 
@@ -759,11 +912,6 @@ void Engine::handle_finish_task(RunState& state, const ScheduledEvent& event) co
             state.schedule(ScheduledEvent{event.time, state.next_order(), ScheduledEventType::ArriveNode, target_id, event.token});
         }
     }
-    for (const auto& resource_id : active_task.allocated_resources)
-    {
-        state.schedule_resource_queue_wake(resource_id, event.time);
-    }
-    state.schedule_reevaluate_pending(event.time);
 }
 
 void Engine::handle_parallel_gateway(RunState& state, const ScheduledEvent& event) const

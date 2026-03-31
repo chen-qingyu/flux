@@ -59,3 +59,47 @@ TEST_CASE("FIFO queue starts entities in arrival order", "[runtime][fifo]")
     REQUIRE(result.reports.resource_summary_rows[0].max_queue_length == 2);
     REQUIRE(result.reports.resource_summary_rows[0].average_wait_time == 3.0);
 }
+
+TEST_CASE("Older infeasible request does not block younger feasible request", "[runtime][same-timestamp]")
+{
+    const auto result = flux::test_support::run_model(std::filesystem::path("data") / "tests" / "same_timestamp_partial_release.bpmn");
+
+    auto find_task_start_time = [&](const std::string& node_id)
+    {
+        for (const auto& row : result.reports.event_rows)
+        {
+            if (row.event_type == "task_start" && row.node_id == node_id)
+            {
+                return row.time;
+            }
+        }
+
+        FAIL("missing task_start event");
+        return 0.0;
+    };
+
+    REQUIRE(find_task_start_time("Task_need_r1") == 4.0);
+    REQUIRE(find_task_start_time("Task_need_all") == 6.0);
+}
+
+TEST_CASE("Oldest feasible request wins when resources free at the same timestamp", "[runtime][same-timestamp]")
+{
+    const auto result = flux::test_support::run_model(std::filesystem::path("data") / "tests" / "same_timestamp_joint_release.bpmn");
+
+    auto find_task_start_time = [&](const std::string& node_id)
+    {
+        for (const auto& row : result.reports.event_rows)
+        {
+            if (row.event_type == "task_start" && row.node_id == node_id)
+            {
+                return row.time;
+            }
+        }
+
+        FAIL("missing task_start event");
+        return 0.0;
+    };
+
+    REQUIRE(find_task_start_time("Task_need_all") == 4.0);
+    REQUIRE(find_task_start_time("Task_need_r1") == 5.0);
+}

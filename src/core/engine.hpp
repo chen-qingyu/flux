@@ -12,11 +12,6 @@
 namespace flux
 {
 
-struct Options
-{
-    std::uint64_t seed{42};
-};
-
 struct Result
 {
     ReportBundle reports;
@@ -28,7 +23,7 @@ struct Result
 class Engine
 {
 public:
-    Result run(const Model& model, const Options& options = {});
+    Result run(const Model& model, std::uint64_t seed = 42) const;
 
 private:
     struct ScheduledEvent;

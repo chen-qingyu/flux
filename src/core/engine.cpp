@@ -773,10 +773,10 @@ private:
     bool pending_resolution_needed_{false};
 };
 
-Result Engine::run(const Model& model, const Options& options)
+Result Engine::run(const Model& model, std::uint64_t seed) const
 {
     Result result;
-    RunState state(model, result, options.seed);
+    RunState state(model, result, seed);
 
     schedule_start_events(state);
 

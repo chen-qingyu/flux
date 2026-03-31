@@ -49,7 +49,7 @@ inline Result run_model(const std::filesystem::path& model_path, std::uint64_t s
 {
     const auto model = parse_model(model_path);
     Engine engine;
-    return engine.run(model, Options{seed});
+    return engine.run(model, seed);
 }
 
 inline void require_report_matches(const std::filesystem::path& model_path, const std::string& golden_prefix)

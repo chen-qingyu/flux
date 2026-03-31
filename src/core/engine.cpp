@@ -41,8 +41,6 @@ struct ProcessToken
 struct ActiveTask
 {
     std::string task_id;
-    double arrival_time{0.0};
-    double start_time{0.0};
     std::vector<std::string> allocated_resources;
 };
 
@@ -340,6 +338,43 @@ public:
         return {};
     }
 
+    struct PreparedPendingRequest
+    {
+        PendingTaskRequest request;
+        std::vector<std::string> allocation;
+    };
+
+    enum class PendingRequestState
+    {
+        Invalid,
+        Infeasible,
+        Ready,
+    };
+
+    struct PendingRequestEvaluation
+    {
+        PendingRequestState state{PendingRequestState::Infeasible};
+        std::vector<std::string> allocation;
+    };
+
+    [[nodiscard]] PendingRequestEvaluation evaluate_pending_request(const PendingTaskRequest& request)
+    {
+        if (!token_valid(request.token))
+        {
+            note_request_dequeued(request);
+            return PendingRequestEvaluation{PendingRequestState::Invalid, {}};
+        }
+
+        const auto& node = flux::node(model_, request.task_id);
+        const auto allocation = allocate_resources_if_possible(request.task_id, node.task->resource_strategy.value());
+        if (allocation.empty())
+        {
+            return PendingRequestEvaluation{PendingRequestState::Infeasible, {}};
+        }
+
+        return PendingRequestEvaluation{PendingRequestState::Ready, allocation};
+    }
+
     void apply_allocation(const std::vector<std::string>& resource_ids, double time, double wait_time, const std::string& entity_id, const std::string& task_id)
     {
         for (const auto& resource_id : resource_ids)
@@ -417,64 +452,13 @@ public:
 
         pending_resolution_needed_ = false;
 
-        auto remaining_requests = std::deque<PendingTaskRequest>{};
-        auto scan_requests = std::move(pending_requests_);
-        auto multi_candidate = std::optional<PendingTaskRequest>{};
-
-        auto load_multi_candidate = [&]()
-        {
-            while (true)
-            {
-                if (multi_candidate.has_value())
-                {
-                    if (!token_valid(multi_candidate->token))
-                    {
-                        note_request_dequeued(*multi_candidate);
-                        multi_candidate.reset();
-                        continue;
-                    }
-
-                    const auto& node = flux::node(model_, multi_candidate->task_id);
-                    const auto allocation = allocate_resources_if_possible(multi_candidate->task_id, node.task->resource_strategy.value());
-                    if (!allocation.empty())
-                    {
-                        return;
-                    }
-
-                    remaining_requests.push_back(std::move(*multi_candidate));
-                    multi_candidate.reset();
-                    continue;
-                }
-
-                if (scan_requests.empty())
-                {
-                    return;
-                }
-
-                auto request = std::move(scan_requests.front());
-                scan_requests.pop_front();
-                if (!token_valid(request.token))
-                {
-                    note_request_dequeued(request);
-                    continue;
-                }
-
-                const auto& node = flux::node(model_, request.task_id);
-                const auto allocation = allocate_resources_if_possible(request.task_id, node.task->resource_strategy.value());
-                if (allocation.empty())
-                {
-                    remaining_requests.push_back(std::move(request));
-                    continue;
-                }
-
-                multi_candidate = std::move(request);
-                return;
-            }
-        };
+        pending_scan_buffer_ = std::move(pending_requests_);
+        pending_remaining_buffer_.clear();
+        auto multi_candidate = std::optional<PreparedPendingRequest>{};
 
         while (true)
         {
-            load_multi_candidate();
+            load_multi_resource_candidate(multi_candidate);
             const auto single_candidate = next_single_resource_candidate();
             const auto has_multi_candidate = multi_candidate.has_value();
 
@@ -483,7 +467,7 @@ public:
                 break;
             }
 
-            const auto choose_single = single_candidate.has_value() && (!has_multi_candidate || single_candidate->order < multi_candidate->order);
+            const auto choose_single = single_candidate.has_value() && (!has_multi_candidate || single_candidate->order < multi_candidate->request.order);
 
             if (choose_single)
             {
@@ -491,46 +475,33 @@ public:
                 continue;
             }
 
-            auto request = std::move(*multi_candidate);
+            auto prepared = std::move(*multi_candidate);
             multi_candidate.reset();
 
-            if (!token_valid(request.token))
-            {
-                note_request_dequeued(request);
-                continue;
-            }
-
-            const auto& node = flux::node(model_, request.task_id);
-            const auto allocation = allocate_resources_if_possible(request.task_id, node.task->resource_strategy.value());
-            if (allocation.empty())
-            {
-                remaining_requests.push_back(std::move(request));
-                continue;
-            }
-
-            note_request_dequeued(request);
-            start_task(request.token, node, time, allocation, time - request.arrival_time);
+            const auto& node = flux::node(model_, prepared.request.task_id);
+            note_request_dequeued(prepared.request);
+            start_task(prepared.request.token, node, time, prepared.allocation, time - prepared.request.arrival_time);
         }
 
         if (multi_candidate.has_value())
         {
-            remaining_requests.push_back(std::move(*multi_candidate));
+            pending_remaining_buffer_.push_back(std::move(multi_candidate->request));
         }
 
-        while (!scan_requests.empty())
+        while (!pending_scan_buffer_.empty())
         {
-            remaining_requests.push_back(std::move(scan_requests.front()));
-            scan_requests.pop_front();
+            pending_remaining_buffer_.push_back(std::move(pending_scan_buffer_.front()));
+            pending_scan_buffer_.pop_front();
         }
 
-        pending_requests_ = std::move(remaining_requests);
+        pending_requests_ = std::move(pending_remaining_buffer_);
     }
 
     void start_task(entt::entity token_entity, const NodeDefinition& node, double time, const std::vector<std::string>& allocation, double wait_time)
     {
         auto& token_component = token(token_entity);
         apply_allocation(allocation, time, wait_time, token_component.entity_id, node.id);
-        registry_.emplace_or_replace<ActiveTask>(token_entity, ActiveTask{node.id, time - wait_time, time, allocation});
+        registry_.emplace_or_replace<ActiveTask>(token_entity, ActiveTask{node.id, allocation});
 
         const auto duration = sample(node.task->duration_distribution);
         log_event(time, token_component, node, "task_start");
@@ -614,6 +585,50 @@ private:
         {
             auto& queue_length = resource_queue_lengths_[resource_id];
             queue_length = std::max(0, queue_length - 1);
+        }
+    }
+
+    void load_multi_resource_candidate(std::optional<PreparedPendingRequest>& multi_candidate)
+    {
+        while (true)
+        {
+            if (multi_candidate.has_value())
+            {
+                auto evaluation = evaluate_pending_request(multi_candidate->request);
+                if (evaluation.state == PendingRequestState::Ready)
+                {
+                    multi_candidate->allocation = std::move(evaluation.allocation);
+                    return;
+                }
+
+                if (evaluation.state == PendingRequestState::Infeasible)
+                {
+                    pending_remaining_buffer_.push_back(std::move(multi_candidate->request));
+                }
+
+                multi_candidate.reset();
+                continue;
+            }
+
+            if (pending_scan_buffer_.empty())
+            {
+                return;
+            }
+
+            auto request = std::move(pending_scan_buffer_.front());
+            pending_scan_buffer_.pop_front();
+
+            auto evaluation = evaluate_pending_request(request);
+            if (evaluation.state == PendingRequestState::Ready)
+            {
+                multi_candidate = PreparedPendingRequest{std::move(request), std::move(evaluation.allocation)};
+                return;
+            }
+
+            if (evaluation.state == PendingRequestState::Infeasible)
+            {
+                pending_remaining_buffer_.push_back(std::move(request));
+            }
         }
     }
 
@@ -744,6 +759,8 @@ private:
     DistributionSampler sampler_;
     std::priority_queue<ScheduledEvent, std::vector<ScheduledEvent>, ScheduledEventCompare> queue_;
     std::deque<PendingTaskRequest> pending_requests_;
+    std::deque<PendingTaskRequest> pending_scan_buffer_;
+    std::deque<PendingTaskRequest> pending_remaining_buffer_;
     std::unordered_map<std::string, std::deque<PendingTaskRequest>> single_resource_pending_requests_;
     std::priority_queue<SingleResourceCandidate, std::vector<SingleResourceCandidate>, SingleResourceCandidateCompare> single_resource_candidates_;
     std::unordered_map<std::string, JoinBarrierState> join_barriers_;

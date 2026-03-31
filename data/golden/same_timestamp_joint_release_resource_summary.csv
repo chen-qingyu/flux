@@ -1,0 +1,3 @@
+resource_id,resource_name,capacity,busy_time,idle_time,utilization,max_queue_length,average_wait_time,allocation_count,simulation_horizon
+DataStoreReference_r1,R1,1,6.000,0.000,1.000,2,2.000,3,6.000
+DataStoreReference_r2,R2,1,5.000,1.000,0.833,1,1.500,2,6.000

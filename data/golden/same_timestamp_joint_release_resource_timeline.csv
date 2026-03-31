@@ -1,0 +1,11 @@
+time,resource_id,resource_name,change_type,in_use,available,queue_length,entity_id,task_id
+0.000,DataStoreReference_r1,R1,allocate,1,0,0,占用R1发生器_hold_r1_0,Task_hold_r1
+0.000,DataStoreReference_r2,R2,allocate,1,0,0,占用R2发生器_hold_r2_1,Task_hold_r2
+4.000,DataStoreReference_r1,R1,release,0,1,2,占用R1发生器_hold_r1_0,Task_hold_r1
+4.000,DataStoreReference_r2,R2,release,0,1,1,占用R2发生器_hold_r2_1,Task_hold_r2
+4.000,DataStoreReference_r1,R1,allocate,1,0,1,等待全部资源发生器_all_case_2,Task_need_all
+4.000,DataStoreReference_r2,R2,allocate,1,0,0,等待全部资源发生器_all_case_2,Task_need_all
+5.000,DataStoreReference_r1,R1,release,0,1,1,等待全部资源发生器_all_case_2,Task_need_all
+5.000,DataStoreReference_r2,R2,release,0,1,0,等待全部资源发生器_all_case_2,Task_need_all
+5.000,DataStoreReference_r1,R1,allocate,1,0,0,等待R1发生器_r1_case_3,Task_need_r1
+6.000,DataStoreReference_r1,R1,release,0,1,0,等待R1发生器_r1_case_3,Task_need_r1

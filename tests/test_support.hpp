@@ -79,4 +79,18 @@ inline std::vector<EventLogRow> select_events(const Result& result, const std::s
     return rows;
 }
 
+inline double require_event_time(const Result& result, const std::string& event_type, const std::string& node_id)
+{
+    for (const auto& row : result.reports.event_rows)
+    {
+        if (row.event_type == event_type && row.node_id == node_id)
+        {
+            return row.time;
+        }
+    }
+
+    FAIL("missing event row");
+    return 0.0;
+}
+
 } // namespace flux::test_support

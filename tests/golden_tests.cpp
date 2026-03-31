@@ -26,3 +26,13 @@ TEST_CASE("FIFO queue golden CSV stays stable", "[golden][fifo]")
 {
     flux::test_support::require_report_matches(std::filesystem::path("data") / "tests" / "fifo_queue_minimal.bpmn", "fifo");
 }
+
+TEST_CASE("Partial-release oldest-feasible golden CSV stays stable", "[golden][same-timestamp]")
+{
+    flux::test_support::require_report_matches(std::filesystem::path("data") / "tests" / "same_timestamp_partial_release.bpmn", "same_timestamp_partial_release");
+}
+
+TEST_CASE("Joint-release oldest-feasible golden CSV stays stable", "[golden][same-timestamp]")
+{
+    flux::test_support::require_report_matches(std::filesystem::path("data") / "tests" / "same_timestamp_joint_release.bpmn", "same_timestamp_joint_release");
+}

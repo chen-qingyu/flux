@@ -79,6 +79,20 @@ struct SingleResourceCandidateCompare
     }
 };
 
+struct MultiResourceCandidate
+{
+    std::uint64_t order{0};
+    std::string task_id;
+};
+
+struct MultiResourceCandidateCompare
+{
+    bool operator()(const MultiResourceCandidate& left, const MultiResourceCandidate& right) const
+    {
+        return left.order > right.order;
+    }
+};
+
 struct JoinBarrierState
 {
     std::vector<entt::entity> waiting_tokens;
@@ -156,6 +170,7 @@ public:
         , sampler_(seed)
     {
         initialize_resources();
+        initialize_multi_resource_tasks();
     }
 
     void schedule(ScheduledEvent event)
@@ -288,7 +303,7 @@ public:
 
     [[nodiscard]] bool has_pending_requests() const
     {
-        return !pending_requests_.empty() || !single_resource_pending_requests_.empty();
+        return !multi_resource_pending_requests_.empty() || !single_resource_pending_requests_.empty();
     }
 
     [[nodiscard]] const std::vector<std::string>& task_resources(const std::string& task_id) const
@@ -346,42 +361,12 @@ public:
         return {};
     }
 
-    struct PreparedPendingRequest
+    struct MultiResourceCandidateView
     {
-        PendingTaskRequest request;
+        std::uint64_t order{0};
+        std::string task_id;
         std::vector<std::string> allocation;
     };
-
-    enum class PendingRequestState
-    {
-        Invalid,
-        Infeasible,
-        Ready,
-    };
-
-    struct PendingRequestEvaluation
-    {
-        PendingRequestState state{PendingRequestState::Infeasible};
-        std::vector<std::string> allocation;
-    };
-
-    [[nodiscard]] PendingRequestEvaluation evaluate_pending_request(const PendingTaskRequest& request)
-    {
-        if (!token_valid(request.token))
-        {
-            note_request_dequeued(request);
-            return PendingRequestEvaluation{PendingRequestState::Invalid, {}};
-        }
-
-        const auto& node = flux::node(model_, request.task_id);
-        const auto allocation = allocate_resources_if_possible(request.task_id, node.task->resource_strategy.value());
-        if (allocation.empty())
-        {
-            return PendingRequestEvaluation{PendingRequestState::Infeasible, {}};
-        }
-
-        return PendingRequestEvaluation{PendingRequestState::Ready, allocation};
-    }
 
     void apply_allocation(const std::vector<std::string>& resource_ids, double time, double wait_time, const std::string& entity_id, const std::string& task_id)
     {
@@ -422,6 +407,7 @@ public:
                 task_id);
 
             push_single_resource_candidate(resource_id);
+            push_multi_resource_candidates(resource_id);
         }
 
         if (has_pending_requests())
@@ -448,7 +434,14 @@ public:
             return;
         }
 
-        pending_requests_.push_back(std::move(request));
+        const auto task_id = request.task_id;
+        auto& requests = multi_resource_pending_requests_[task_id];
+        const auto was_empty = requests.empty();
+        requests.push_back(std::move(request));
+        if (was_empty)
+        {
+            push_multi_resource_candidate(task_id);
+        }
     }
 
     void resolve_pending(double time)
@@ -460,22 +453,17 @@ public:
 
         pending_resolution_needed_ = false;
 
-        pending_scan_buffer_ = std::move(pending_requests_);
-        pending_remaining_buffer_.clear();
-        auto multi_candidate = std::optional<PreparedPendingRequest>{};
-
         while (true)
         {
-            load_multi_resource_candidate(multi_candidate);
+            auto multi_candidate = next_multi_resource_candidate();
             const auto single_candidate = next_single_resource_candidate();
-            const auto has_multi_candidate = multi_candidate.has_value();
 
-            if (!single_candidate.has_value() && !has_multi_candidate)
+            if (!single_candidate.has_value() && !multi_candidate.has_value())
             {
                 break;
             }
 
-            const auto choose_single = single_candidate.has_value() && (!has_multi_candidate || single_candidate->order < multi_candidate->request.order);
+            const auto choose_single = single_candidate.has_value() && (!multi_candidate.has_value() || single_candidate->order < multi_candidate->order);
 
             if (choose_single)
             {
@@ -483,26 +471,8 @@ public:
                 continue;
             }
 
-            auto prepared = std::move(*multi_candidate);
-            multi_candidate.reset();
-
-            const auto& node = flux::node(model_, prepared.request.task_id);
-            note_request_dequeued(prepared.request);
-            start_task(prepared.request.token, node, time, prepared.allocation, time - prepared.request.arrival_time);
+            start_multi_resource_request(multi_candidate->task_id, time, std::move(multi_candidate->allocation));
         }
-
-        if (multi_candidate.has_value())
-        {
-            pending_remaining_buffer_.push_back(std::move(multi_candidate->request));
-        }
-
-        while (!pending_scan_buffer_.empty())
-        {
-            pending_remaining_buffer_.push_back(std::move(pending_scan_buffer_.front()));
-            pending_scan_buffer_.pop_front();
-        }
-
-        pending_requests_ = std::move(pending_remaining_buffer_);
     }
 
     void start_task(entt::entity token_entity, const NodeDefinition& node, double time, const std::vector<std::string>& allocation, double wait_time)
@@ -576,6 +546,22 @@ private:
         }
     }
 
+    void initialize_multi_resource_tasks()
+    {
+        for (const auto& [task_id, resource_ids] : model_.task_resources)
+        {
+            if (resource_ids.size() <= 1)
+            {
+                continue;
+            }
+
+            for (const auto& resource_id : resource_ids)
+            {
+                multi_resource_tasks_by_resource_[resource_id].push_back(task_id);
+            }
+        }
+    }
+
     void note_request_enqueued(const PendingTaskRequest& request)
     {
         for (const auto& resource_id : task_resources(request.task_id))
@@ -596,48 +582,93 @@ private:
         }
     }
 
-    void load_multi_resource_candidate(std::optional<PreparedPendingRequest>& multi_candidate)
+    void push_multi_resource_candidates(const std::string& resource_id)
     {
-        while (true)
+        const auto found = multi_resource_tasks_by_resource_.find(resource_id);
+        if (found == multi_resource_tasks_by_resource_.end())
         {
-            if (multi_candidate.has_value())
+            return;
+        }
+
+        for (const auto& task_id : found->second)
+        {
+            push_multi_resource_candidate(task_id);
+        }
+    }
+
+    void push_multi_resource_candidate(const std::string& task_id)
+    {
+        const auto found = multi_resource_pending_requests_.find(task_id);
+        if (found == multi_resource_pending_requests_.end() || found->second.empty())
+        {
+            return;
+        }
+
+        multi_resource_candidates_.push(MultiResourceCandidate{found->second.front().order, task_id});
+    }
+
+    void discard_invalid_multi_resource_fronts(const std::string& task_id)
+    {
+        const auto found = multi_resource_pending_requests_.find(task_id);
+        if (found == multi_resource_pending_requests_.end())
+        {
+            return;
+        }
+
+        auto& requests = found->second;
+        auto removed_any = false;
+        while (!requests.empty() && !token_valid(requests.front().token))
+        {
+            note_request_dequeued(requests.front());
+            requests.pop_front();
+            removed_any = true;
+        }
+
+        if (requests.empty())
+        {
+            multi_resource_pending_requests_.erase(found);
+            return;
+        }
+
+        if (removed_any)
+        {
+            push_multi_resource_candidate(task_id);
+        }
+    }
+
+    [[nodiscard]] std::optional<MultiResourceCandidateView> next_multi_resource_candidate()
+    {
+        while (!multi_resource_candidates_.empty())
+        {
+            const auto candidate = multi_resource_candidates_.top();
+            discard_invalid_multi_resource_fronts(candidate.task_id);
+
+            const auto found = multi_resource_pending_requests_.find(candidate.task_id);
+            if (found == multi_resource_pending_requests_.end())
             {
-                auto evaluation = evaluate_pending_request(multi_candidate->request);
-                if (evaluation.state == PendingRequestState::Ready)
-                {
-                    multi_candidate->allocation = std::move(evaluation.allocation);
-                    return;
-                }
-
-                if (evaluation.state == PendingRequestState::Infeasible)
-                {
-                    pending_remaining_buffer_.push_back(std::move(multi_candidate->request));
-                }
-
-                multi_candidate.reset();
+                multi_resource_candidates_.pop();
                 continue;
             }
 
-            if (pending_scan_buffer_.empty())
+            const auto& request = found->second.front();
+            if (request.order != candidate.order)
             {
-                return;
+                multi_resource_candidates_.pop();
+                continue;
             }
 
-            auto request = std::move(pending_scan_buffer_.front());
-            pending_scan_buffer_.pop_front();
-
-            auto evaluation = evaluate_pending_request(request);
-            if (evaluation.state == PendingRequestState::Ready)
+            const auto& node = flux::node(model_, request.task_id);
+            auto allocation = allocate_resources_if_possible(request.task_id, node.task->resource_strategy.value());
+            if (allocation.empty())
             {
-                multi_candidate = PreparedPendingRequest{std::move(request), std::move(evaluation.allocation)};
-                return;
+                multi_resource_candidates_.pop();
+                continue;
             }
 
-            if (evaluation.state == PendingRequestState::Infeasible)
-            {
-                pending_remaining_buffer_.push_back(std::move(request));
-            }
+            return MultiResourceCandidateView{request.order, candidate.task_id, std::move(allocation)};
         }
+
+        return std::nullopt;
     }
 
     void push_single_resource_candidate(const std::string& resource_id)
@@ -741,6 +772,27 @@ private:
         start_task(request.token, node, time, {resource_id}, time - request.arrival_time);
     }
 
+    void start_multi_resource_request(const std::string& task_id, double time, std::vector<std::string> allocation)
+    {
+        auto& requests = multi_resource_pending_requests_.at(task_id);
+        auto request = std::move(requests.front());
+        requests.pop_front();
+        multi_resource_candidates_.pop();
+
+        if (requests.empty())
+        {
+            multi_resource_pending_requests_.erase(task_id);
+        }
+        else
+        {
+            push_multi_resource_candidate(task_id);
+        }
+
+        const auto& node = flux::node(model_, request.task_id);
+        note_request_dequeued(request);
+        start_task(request.token, node, time, allocation, time - request.arrival_time);
+    }
+
     ResourceRuntime& resource_runtime(const std::string& resource_id)
     {
         return registry_.get<ResourceRuntime>(resource_entities_.at(resource_id));
@@ -766,11 +818,11 @@ private:
     Result& result_;
     DistributionSampler sampler_;
     std::priority_queue<ScheduledEvent, std::vector<ScheduledEvent>, ScheduledEventCompare> queue_;
-    std::deque<PendingTaskRequest> pending_requests_;
-    std::deque<PendingTaskRequest> pending_scan_buffer_;
-    std::deque<PendingTaskRequest> pending_remaining_buffer_;
     std::unordered_map<std::string, std::deque<PendingTaskRequest>> single_resource_pending_requests_;
     std::priority_queue<SingleResourceCandidate, std::vector<SingleResourceCandidate>, SingleResourceCandidateCompare> single_resource_candidates_;
+    std::unordered_map<std::string, std::deque<PendingTaskRequest>> multi_resource_pending_requests_;
+    std::priority_queue<MultiResourceCandidate, std::vector<MultiResourceCandidate>, MultiResourceCandidateCompare> multi_resource_candidates_;
+    std::unordered_map<std::string, std::vector<std::string>> multi_resource_tasks_by_resource_;
     std::unordered_map<std::string, JoinBarrierState> join_barriers_;
     std::unordered_map<std::string, entt::entity> resource_entities_;
     std::unordered_map<std::string, int> resource_queue_lengths_;

@@ -104,10 +104,7 @@ public:
             case DistributionType::Static:
                 return spec.first;
             case DistributionType::Uniform:
-            {
-                std::uniform_real_distribution<double> distribution(spec.first, spec.second);
-                return distribution(generator_);
-            }
+                return sample_uniform(spec.first, spec.second);
             case DistributionType::Exponential:
             {
                 std::exponential_distribution<double> distribution(1.0 / spec.first);
@@ -127,6 +124,12 @@ public:
         }
 
         return 0.0;
+    }
+
+    double sample_uniform(double minimum, double maximum)
+    {
+        std::uniform_real_distribution<double> distribution(minimum, maximum);
+        return distribution(generator_);
     }
 
 private:
@@ -223,6 +226,11 @@ public:
     double sample(const DistributionSpec& spec)
     {
         return sampler_.sample(spec);
+    }
+
+    double sample_uniform(double minimum, double maximum)
+    {
+        return sampler_.sample_uniform(minimum, maximum);
     }
 
     void log_event(double time, const ProcessToken& token_component, const NodeDefinition& node, const std::string& event_type)
@@ -895,7 +903,7 @@ void Engine::handle_arrive_node(RunState& state, const ScheduledEvent& event) co
 
     if (node.type == NodeType::ExclusiveGateway)
     {
-        const auto& selected_target = state.model().outgoing.at(node.id).front();
+        const auto selected_target = select_exclusive_gateway_target(state, node);
         state.log_event(event.time, token_component, node, "gateway_route");
         state.schedule(ScheduledEvent{event.time, state.next_order(), ScheduledEventType::ArriveNode, selected_target, event.token});
         return;
@@ -929,6 +937,45 @@ void Engine::handle_finish_task(RunState& state, const ScheduledEvent& event) co
             state.schedule(ScheduledEvent{event.time, state.next_order(), ScheduledEventType::ArriveNode, target_id, event.token});
         }
     }
+}
+
+std::string Engine::select_exclusive_gateway_target(RunState& state, const NodeDefinition& node) const
+{
+    if (!node.gateway_criteria.has_value())
+    {
+        throw std::runtime_error("Exclusive gateway '" + node.id + "' must define routing criteria before execution.");
+    }
+
+    if (*node.gateway_criteria != GatewayCriteria::ByWeight)
+    {
+        throw std::runtime_error("Unsupported exclusive gateway routing criteria.");
+    }
+
+    const auto& flow_ids = state.model().outgoing_flow_ids.at(node.id);
+    if (flow_ids.size() == 1)
+    {
+        return flux::flow(state.model(), flow_ids.front()).target_id;
+    }
+
+    double total_weight = 0.0;
+    for (const auto& flow_id : flow_ids)
+    {
+        total_weight += flux::flow(state.model(), flow_id).weight.value_or(0.0);
+    }
+
+    const auto threshold = state.sample_uniform(0.0, total_weight);
+    double cumulative_weight = 0.0;
+    for (const auto& flow_id : flow_ids)
+    {
+        const auto& candidate = flux::flow(state.model(), flow_id);
+        cumulative_weight += candidate.weight.value_or(0.0);
+        if (threshold < cumulative_weight)
+        {
+            return candidate.target_id;
+        }
+    }
+
+    return flux::flow(state.model(), flow_ids.back()).target_id;
 }
 
 void Engine::handle_parallel_gateway(RunState& state, const ScheduledEvent& event) const

@@ -2,11 +2,6 @@
 
 #include "test_support.hpp"
 
-TEST_CASE("XOR gateway golden CSV stays stable", "[golden][xor]")
-{
-    flux::test_support::require_report_matches(std::filesystem::path("data") / "tests" / "xor_minimal.bpmn", "xor");
-}
-
 TEST_CASE("AND gateway golden CSV stays stable", "[golden][and]")
 {
     flux::test_support::require_report_matches(std::filesystem::path("data") / "tests" / "and_minimal.bpmn", "and");

@@ -1,3 +1,6 @@
+#include <algorithm>
+#include <cmath>
+
 #include <catch2/catch_test_macros.hpp>
 
 #include "test_support.hpp"
@@ -74,4 +77,43 @@ TEST_CASE("Oldest feasible request wins when resources free at the same timestam
 
     REQUIRE(flux::test_support::require_event_time(result, "task_start", "Task_need_all") == 4.0);
     REQUIRE(flux::test_support::require_event_time(result, "task_start", "Task_need_r1") == 5.0);
+}
+
+TEST_CASE("Weighted splitter routes entities across outgoing branches", "[runtime][splitter]")
+{
+    std::size_t branch_1_count = 0;
+    std::size_t branch_2_count = 0;
+    std::size_t branch_3_count = 0;
+    std::size_t total_task_starts = 0;
+
+    const auto count_task_starts = [](const auto& task_starts, const std::string& node_id)
+    {
+        return std::count_if(task_starts.begin(), task_starts.end(), [&](const auto& row)
+                             { return row.node_id == node_id; });
+    };
+
+    constexpr std::uint64_t run_count = 64;
+    for (std::uint64_t seed = 1; seed <= run_count; ++seed)
+    {
+        const auto result = flux::test_support::run_model(std::filesystem::path("data") / "tests" / "splitter.bpmn", seed);
+        const auto task_starts = flux::test_support::select_events(result, "task_start");
+
+        total_task_starts += task_starts.size();
+        branch_1_count += count_task_starts(task_starts, "Activity_1");
+        branch_2_count += count_task_starts(task_starts, "Activity_2");
+        branch_3_count += count_task_starts(task_starts, "Activity_3");
+    }
+
+    REQUIRE(total_task_starts == run_count * 100);
+    REQUIRE(branch_1_count + branch_2_count + branch_3_count == total_task_starts);
+
+    const auto branch_1_ratio = static_cast<double>(branch_1_count) / static_cast<double>(total_task_starts);
+    const auto branch_2_ratio = static_cast<double>(branch_2_count) / static_cast<double>(total_task_starts);
+    const auto branch_3_ratio = static_cast<double>(branch_3_count) / static_cast<double>(total_task_starts);
+
+    REQUIRE(std::abs(branch_1_ratio - (1.0 / 6.0)) < 0.03);
+    REQUIRE(std::abs(branch_2_ratio - (2.0 / 6.0)) < 0.03);
+    REQUIRE(std::abs(branch_3_ratio - (3.0 / 6.0)) < 0.03);
+    REQUIRE(branch_1_ratio < branch_2_ratio);
+    REQUIRE(branch_2_ratio < branch_3_ratio);
 }

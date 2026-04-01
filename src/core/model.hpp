@@ -32,6 +32,11 @@ enum class ResourceStrategy
     Any,
 };
 
+enum class GatewayCriteria
+{
+    ByWeight,
+};
+
 struct DistributionSpec
 {
     DistributionType type{DistributionType::Static};
@@ -59,13 +64,16 @@ struct NodeDefinition
     NodeType type{NodeType::Task};
     std::optional<GeneratorSpec> generator;
     std::optional<TaskSpec> task;
+    std::optional<GatewayCriteria> gateway_criteria;
 };
 
 struct SequenceFlowDefinition
 {
     std::string id;
+    std::string name;
     std::string source_id;
     std::string target_id;
+    std::optional<double> weight;
 };
 
 struct ResourceDefinition
@@ -84,6 +92,8 @@ struct Model
     std::vector<SequenceFlowDefinition> flows;
     std::unordered_map<std::string, std::vector<std::string>> outgoing;
     std::unordered_map<std::string, std::vector<std::string>> incoming;
+    std::unordered_map<std::string, std::vector<std::string>> outgoing_flow_ids;
+    std::unordered_map<std::string, std::size_t> flow_indexes;
     std::unordered_map<std::string, std::vector<std::string>> task_resources;
     std::vector<std::string> start_node_ids;
 };

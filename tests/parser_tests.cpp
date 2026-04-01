@@ -37,3 +37,21 @@ TEST_CASE("Parser reads fifo generator count", "[parser][fifo]")
     REQUIRE(start.generator->entity_count == 3);
     REQUIRE(start.generator->entity_type == "customer");
 }
+
+TEST_CASE("Parser reads weighted splitter model", "[parser][splitter]")
+{
+    const auto model = flux::test_support::parse_model(std::filesystem::path("data") / "tests" / "splitter.bpmn");
+
+    const auto& gateway = flux::node(model, "Gateway_splitter");
+    REQUIRE(gateway.gateway_criteria == flux::GatewayCriteria::ByWeight);
+    REQUIRE(model.outgoing_flow_ids.at("Gateway_splitter").size() == 3);
+
+    const auto& flow_1 = flux::flow(model, "Flow_07g491b");
+    const auto& flow_2 = flux::flow(model, "Flow_1ee3144");
+    const auto& flow_3 = flux::flow(model, "Flow_0aoi10x");
+
+    REQUIRE(flow_1.name == "1");
+    REQUIRE(flow_1.weight == 1.0);
+    REQUIRE(flow_2.weight == 2.0);
+    REQUIRE(flow_3.weight == 3.0);
+}

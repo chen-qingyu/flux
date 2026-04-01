@@ -146,6 +146,23 @@ private:
         throw std::runtime_error(context + " uses unsupported property '" + key + "' value '" + value + "'.");
     }
 
+    template <typename Enum>
+    [[nodiscard]] std::optional<Enum> read_optional_enum(const PropertyMap& properties, const std::string& key, const std::string& context) const
+    {
+        const auto found = properties.find(key);
+        if (found == properties.end() || found->second.empty())
+        {
+            return std::nullopt;
+        }
+
+        if (const auto parsed = magic_enum::enum_cast<Enum>(found->second, magic_enum::case_insensitive); parsed.has_value())
+        {
+            return *parsed;
+        }
+
+        throw std::runtime_error(context + " uses unsupported property '" + key + "' value '" + found->second + "'.");
+    }
+
     [[nodiscard]] std::size_t read_required_count(const PropertyMap& properties, const std::string& key, const std::string& context) const
     {
         if (const auto found = properties.find(key); found != properties.end())
@@ -194,6 +211,47 @@ private:
         }
 
         throw std::runtime_error(context + " uses unsupported distribution type.");
+    }
+
+    [[nodiscard]] std::optional<GatewayCriteria> read_optional_gateway_criteria(const PropertyMap& properties, const std::string& context) const
+    {
+        const auto found = properties.find("_criteria");
+        if (found == properties.end() || found->second.empty())
+        {
+            return std::nullopt;
+        }
+
+        if (lower_copy(found->second) == "by_weight")
+        {
+            return GatewayCriteria::ByWeight;
+        }
+
+        throw std::runtime_error(context + " uses unsupported property '_criteria' value '" + found->second + "'.");
+    }
+
+    [[nodiscard]] double parse_required_positive_double(const std::string& value, const std::string& context) const
+    {
+        if (value.empty())
+        {
+            throw std::runtime_error(context + " must define a positive numeric weight in sequence flow name.");
+        }
+
+        std::size_t parsed_size = 0;
+        const auto parsed = std::stod(value, &parsed_size);
+        if (parsed_size != value.size() || !std::isfinite(parsed) || parsed <= 0.0)
+        {
+            throw std::runtime_error(context + " must define a positive numeric weight in sequence flow name.");
+        }
+        return parsed;
+    }
+
+    [[nodiscard]] SequenceFlowDefinition& flow_by_id(const std::string& flow_id)
+    {
+        if (const auto found = model_.flow_indexes.find(flow_id); found != model_.flow_indexes.end())
+        {
+            return model_.flows.at(found->second);
+        }
+        throw std::runtime_error("Unknown flow id: " + flow_id);
     }
 
     void validate_distribution(const DistributionSpec& distribution, const std::string& context) const
@@ -401,10 +459,12 @@ private:
 
     void parse_exclusive_gateway(const pugi::xml_node& child)
     {
+        const auto properties = read_properties(child);
         NodeDefinition definition;
         definition.id = read_required_attribute(child, "id", "Exclusive gateway");
         definition.name = child.attribute("name").value();
         definition.type = NodeType::ExclusiveGateway;
+        definition.gateway_criteria = read_optional_gateway_criteria(properties, "Exclusive gateway '" + definition.id + "'");
         model_.nodes.insert_or_assign(definition.id, std::move(definition));
     }
 
@@ -427,6 +487,7 @@ private:
     {
         SequenceFlowDefinition flow;
         flow.id = read_required_attribute(child, "id", "Sequence flow");
+        flow.name = child.attribute("name").value();
         flow.source_id = read_required_attribute(child, "sourceRef", "Sequence flow");
         flow.target_id = read_required_attribute(child, "targetRef", "Sequence flow");
         model_.flows.push_back(std::move(flow));
@@ -444,15 +505,19 @@ private:
         build_flow_indexes();
         bind_task_resources();
         normalize_model();
+        resolve_splitter_weights();
         validate_model();
     }
 
     void build_flow_indexes()
     {
-        for (const auto& flow : model_.flows)
+        for (std::size_t index = 0; index < model_.flows.size(); ++index)
         {
+            const auto& flow = model_.flows[index];
             model_.outgoing[flow.source_id].push_back(flow.target_id);
             model_.incoming[flow.target_id].push_back(flow.source_id);
+            model_.outgoing_flow_ids[flow.source_id].push_back(flow.id);
+            model_.flow_indexes.insert_or_assign(flow.id, index);
         }
     }
 
@@ -487,7 +552,35 @@ private:
         std::sort(model_.start_node_ids.begin(), model_.start_node_ids.end());
     }
 
-    void validate_model() const
+    void resolve_splitter_weights()
+    {
+        for (const auto& [node_id, definition] : model_.nodes)
+        {
+            if (definition.type != NodeType::ExclusiveGateway || !definition.gateway_criteria.has_value())
+            {
+                continue;
+            }
+
+            if (*definition.gateway_criteria != GatewayCriteria::ByWeight)
+            {
+                throw std::runtime_error("Exclusive gateway '" + node_id + "' uses unsupported routing criteria.");
+            }
+
+            const auto found = model_.outgoing_flow_ids.find(node_id);
+            if (found == model_.outgoing_flow_ids.end() || found->second.empty())
+            {
+                continue;
+            }
+
+            for (const auto& flow_id : found->second)
+            {
+                auto& flow = flow_by_id(flow_id);
+                flow.weight = parse_required_positive_double(flow.name, "Sequence flow '" + flow.id + "'");
+            }
+        }
+    }
+
+    void validate_model()
     {
         if (model_.process_id.empty())
         {
@@ -535,10 +628,35 @@ private:
                 case NodeType::EndEvent:
                     break;
                 case NodeType::ExclusiveGateway:
+                    if (!definition.gateway_criteria.has_value())
+                    {
+                        throw std::runtime_error("Exclusive gateway '" + node_id + "' must define '_criteria'.");
+                    }
+                    if (*definition.gateway_criteria != GatewayCriteria::ByWeight)
+                    {
+                        throw std::runtime_error("Exclusive gateway '" + node_id + "' uses unsupported routing criteria.");
+                    }
+                    [[fallthrough]];
                 case NodeType::ParallelGateway:
                     if (!model_.outgoing.contains(node_id) || model_.outgoing.at(node_id).empty())
                     {
                         throw std::runtime_error("Gateway '" + node_id + "' must have outgoing sequence flow.");
+                    }
+                    if (definition.type == NodeType::ExclusiveGateway && definition.gateway_criteria == GatewayCriteria::ByWeight)
+                    {
+                        const auto flow_ids = model_.outgoing_flow_ids.find(node_id);
+                        if (flow_ids == model_.outgoing_flow_ids.end() || flow_ids->second.empty())
+                        {
+                            throw std::runtime_error("Exclusive gateway '" + node_id + "' must have outgoing sequence flow.");
+                        }
+                        for (const auto& flow_id : flow_ids->second)
+                        {
+                            const auto& flow = flow_by_id(flow_id);
+                            if (!flow.weight.has_value())
+                            {
+                                throw std::runtime_error("Sequence flow '" + flow.id + "' must define a positive numeric weight in sequence flow name.");
+                            }
+                        }
                     }
                     break;
             }

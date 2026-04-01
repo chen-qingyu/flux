@@ -36,6 +36,7 @@ private:
     void handle_finish_task(RunState& state, const ScheduledEvent& event) const;
     void handle_parallel_gateway(RunState& state, const ScheduledEvent& event) const;
     void continue_parallel_gateway(RunState& state, const ScheduledEvent& event, std::size_t outgoing_count, entt::entity token_entity) const;
+    std::string select_exclusive_gateway_target(RunState& state, const NodeDefinition& node) const;
 };
 
 } // namespace flux

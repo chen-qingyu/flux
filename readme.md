@@ -94,6 +94,10 @@ python run.py data/demo.bpmn --seed 42
 - `_entityCount`
 - `_entityType`
 
+当前开始事件只支持 `_initiatorType=random`。
+
+当 `_initiatorType=random` 时，会继续读取字段 `_distributionType`，其取值是分布类型：`static`、`uniform`、`exponential`、`normal`、`lognormal`。
+
 ### 任务
 
 任务至少要提供 `_taskType`。
@@ -113,11 +117,11 @@ python run.py data/demo.bpmn --seed 42
 
 当前支持这些分布：
 
-- `Static`: 固定间隔，属性是 `_staticInterval`
-- `Uniform`: 均匀分布，属性是 `_min` 和 `_max`
-- `Exponential`: 指数分布，属性是 `_mean`
-- `Normal`: 正态分布，属性是 `_mean` 和 `_standardDeviation`
-- `LogNormal`: 对数正态分布，属性是 `_mean` 和 `_standardDeviation`
+- `static`: 固定间隔，属性是 `_staticInterval`
+- `uniform`: 均匀分布，属性是 `_min` 和 `_max`
+- `exponential`: 指数分布，属性是 `_mean`
+- `normal`: 正态分布，属性是 `_mean` 和 `_standardDeviation`
+- `lognormal`: 对数正态分布，属性是 `_mean` 和 `_standardDeviation`
 
 分布属性的参数在解析阶段会进行校验，时间语义要求采样结果非负，因此解析层会拒绝明显落到负时间域的输入。
 

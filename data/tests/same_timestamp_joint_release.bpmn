@@ -8,7 +8,8 @@
         <bpmn:startEvent id="Event_start_hold_r1" name="占用R1发生器">
             <bpmn:extensionElements>
                 <camunda:properties>
-                    <camunda:property name="_initiatorType" value="static" />
+                    <camunda:property name="_initiatorType" value="random" />
+                    <camunda:property name="_distributionType" value="static" />
                     <camunda:property name="_entityCount" value="1" />
                     <camunda:property name="_entityType" value="hold_r1" />
                     <camunda:property name="_staticInterval" value="1" />
@@ -19,7 +20,8 @@
         <bpmn:startEvent id="Event_start_hold_r2" name="占用R2发生器">
             <bpmn:extensionElements>
                 <camunda:properties>
-                    <camunda:property name="_initiatorType" value="static" />
+                    <camunda:property name="_initiatorType" value="random" />
+                    <camunda:property name="_distributionType" value="static" />
                     <camunda:property name="_entityCount" value="1" />
                     <camunda:property name="_entityType" value="hold_r2" />
                     <camunda:property name="_staticInterval" value="1" />
@@ -30,7 +32,8 @@
         <bpmn:startEvent id="Event_start_wait_all" name="等待全部资源发生器">
             <bpmn:extensionElements>
                 <camunda:properties>
-                    <camunda:property name="_initiatorType" value="static" />
+                    <camunda:property name="_initiatorType" value="random" />
+                    <camunda:property name="_distributionType" value="static" />
                     <camunda:property name="_entityCount" value="1" />
                     <camunda:property name="_entityType" value="all_case" />
                     <camunda:property name="_staticInterval" value="1" />
@@ -41,7 +44,8 @@
         <bpmn:startEvent id="Event_start_wait_r1" name="等待R1发生器">
             <bpmn:extensionElements>
                 <camunda:properties>
-                    <camunda:property name="_initiatorType" value="static" />
+                    <camunda:property name="_initiatorType" value="random" />
+                    <camunda:property name="_distributionType" value="static" />
                     <camunda:property name="_entityCount" value="1" />
                     <camunda:property name="_entityType" value="r1_case" />
                     <camunda:property name="_staticInterval" value="1" />

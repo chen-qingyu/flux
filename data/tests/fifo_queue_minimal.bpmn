@@ -8,7 +8,8 @@
         <bpmn:startEvent id="Event_start" name="FIFO发生器">
             <bpmn:extensionElements>
                 <camunda:properties>
-                    <camunda:property name="_initiatorType" value="static" />
+                    <camunda:property name="_initiatorType" value="random" />
+                    <camunda:property name="_distributionType" value="static" />
                     <camunda:property name="_entityCount" value="3" />
                     <camunda:property name="_entityType" value="customer" />
                     <camunda:property name="_staticInterval" value="1" />

@@ -246,8 +246,14 @@ private:
         const auto properties = read_properties(node);
         const auto context = "Start event '" + read_required_attribute(node, "id", "Start event") + "'";
 
+        const auto initiator_type = lower_copy(read_required_text(properties, "_initiatorType", context));
+        if (initiator_type != "random")
+        {
+            throw std::runtime_error(context + " uses unsupported _initiatorType '" + initiator_type + "'. Only 'random' is supported.");
+        }
+
         GeneratorSpec generator;
-        generator.interval_distribution = read_distribution(properties, "_initiatorType", context);
+        generator.interval_distribution = read_distribution(properties, "_distributionType", context);
         generator.entity_count = read_required_count(properties, "_entityCount", context);
         generator.entity_type = read_required_text(properties, "_entityType", context);
         return generator;

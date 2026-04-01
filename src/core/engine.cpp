@@ -65,29 +65,22 @@ struct PendingTaskRequest
     double arrival_time{0.0};
 };
 
-struct SingleResourceCandidate
+enum class PendingCandidateKind
+{
+    SingleResource,
+    MultiResource,
+};
+
+struct PendingCandidate
 {
     std::uint64_t order{0};
-    std::string resource_id;
+    PendingCandidateKind kind{PendingCandidateKind::SingleResource};
+    std::string key;
 };
 
-struct SingleResourceCandidateCompare
+struct PendingCandidateCompare
 {
-    bool operator()(const SingleResourceCandidate& left, const SingleResourceCandidate& right) const
-    {
-        return left.order > right.order;
-    }
-};
-
-struct MultiResourceCandidate
-{
-    std::uint64_t order{0};
-    std::string task_id;
-};
-
-struct MultiResourceCandidateCompare
-{
-    bool operator()(const MultiResourceCandidate& left, const MultiResourceCandidate& right) const
+    bool operator()(const PendingCandidate& left, const PendingCandidate& right) const
     {
         return left.order > right.order;
     }
@@ -361,10 +354,10 @@ public:
         return {};
     }
 
-    struct MultiResourceCandidateView
+    struct PendingCandidateView
     {
-        std::uint64_t order{0};
-        std::string task_id;
+        PendingCandidateKind kind{PendingCandidateKind::SingleResource};
+        std::string key;
         std::vector<std::string> allocation;
     };
 
@@ -455,23 +448,13 @@ public:
 
         while (true)
         {
-            auto multi_candidate = next_multi_resource_candidate();
-            const auto single_candidate = next_single_resource_candidate();
-
-            if (!single_candidate.has_value() && !multi_candidate.has_value())
+            auto candidate = next_pending_candidate();
+            if (!candidate.has_value())
             {
                 break;
             }
 
-            const auto choose_single = single_candidate.has_value() && (!multi_candidate.has_value() || single_candidate->order < multi_candidate->order);
-
-            if (choose_single)
-            {
-                start_single_resource_request(single_candidate->resource_id, time);
-                continue;
-            }
-
-            start_multi_resource_request(multi_candidate->task_id, time, std::move(multi_candidate->allocation));
+            start_pending_request(std::move(*candidate), time);
         }
     }
 
@@ -516,6 +499,8 @@ public:
     }
 
 private:
+    using PendingRequestMap = std::unordered_map<std::string, std::deque<PendingTaskRequest>>;
+
     struct ScheduledEventCompare
     {
         bool operator()(const ScheduledEvent& left, const ScheduledEvent& right) const
@@ -598,62 +583,61 @@ private:
 
     void push_multi_resource_candidate(const std::string& task_id)
     {
-        const auto found = multi_resource_pending_requests_.find(task_id);
-        if (found == multi_resource_pending_requests_.end() || found->second.empty())
-        {
-            return;
-        }
-
-        multi_resource_candidates_.push(MultiResourceCandidate{found->second.front().order, task_id});
+        push_pending_candidate_if_waiting(multi_resource_pending_requests_, PendingCandidateKind::MultiResource, task_id);
     }
 
     void discard_invalid_multi_resource_fronts(const std::string& task_id)
     {
-        const auto found = multi_resource_pending_requests_.find(task_id);
-        if (found == multi_resource_pending_requests_.end())
-        {
-            return;
-        }
-
-        auto& requests = found->second;
-        auto removed_any = false;
-        while (!requests.empty() && !token_valid(requests.front().token))
-        {
-            note_request_dequeued(requests.front());
-            requests.pop_front();
-            removed_any = true;
-        }
-
-        if (requests.empty())
-        {
-            multi_resource_pending_requests_.erase(found);
-            return;
-        }
-
-        if (removed_any)
-        {
-            push_multi_resource_candidate(task_id);
-        }
+        discard_invalid_fronts(multi_resource_pending_requests_, task_id, PendingCandidateKind::MultiResource);
     }
 
-    [[nodiscard]] std::optional<MultiResourceCandidateView> next_multi_resource_candidate()
+    [[nodiscard]] std::optional<PendingCandidateView> next_pending_candidate()
     {
-        while (!multi_resource_candidates_.empty())
+        while (!pending_candidates_.empty())
         {
-            const auto candidate = multi_resource_candidates_.top();
-            discard_invalid_multi_resource_fronts(candidate.task_id);
+            const auto candidate = pending_candidates_.top();
 
-            const auto found = multi_resource_pending_requests_.find(candidate.task_id);
+            if (candidate.kind == PendingCandidateKind::SingleResource)
+            {
+                discard_invalid_single_resource_fronts(candidate.key);
+
+                const auto found = single_resource_pending_requests_.find(candidate.key);
+                if (found == single_resource_pending_requests_.end())
+                {
+                    pending_candidates_.pop();
+                    continue;
+                }
+
+                const auto& request = found->second.front();
+                if (request.order != candidate.order)
+                {
+                    pending_candidates_.pop();
+                    continue;
+                }
+
+                const auto& runtime = resource_runtime(candidate.key);
+                if (runtime.in_use >= runtime.capacity)
+                {
+                    pending_candidates_.pop();
+                    continue;
+                }
+
+                return PendingCandidateView{candidate.kind, candidate.key, {}};
+            }
+
+            discard_invalid_multi_resource_fronts(candidate.key);
+
+            const auto found = multi_resource_pending_requests_.find(candidate.key);
             if (found == multi_resource_pending_requests_.end())
             {
-                multi_resource_candidates_.pop();
+                pending_candidates_.pop();
                 continue;
             }
 
             const auto& request = found->second.front();
             if (request.order != candidate.order)
             {
-                multi_resource_candidates_.pop();
+                pending_candidates_.pop();
                 continue;
             }
 
@@ -661,11 +645,11 @@ private:
             auto allocation = allocate_resources_if_possible(request.task_id, node.task->resource_strategy.value());
             if (allocation.empty())
             {
-                multi_resource_candidates_.pop();
+                pending_candidates_.pop();
                 continue;
             }
 
-            return MultiResourceCandidateView{request.order, candidate.task_id, std::move(allocation)};
+            return PendingCandidateView{candidate.kind, candidate.key, std::move(allocation)};
         }
 
         return std::nullopt;
@@ -673,19 +657,34 @@ private:
 
     void push_single_resource_candidate(const std::string& resource_id)
     {
-        const auto found = single_resource_pending_requests_.find(resource_id);
-        if (found == single_resource_pending_requests_.end() || found->second.empty())
-        {
-            return;
-        }
-
-        single_resource_candidates_.push(SingleResourceCandidate{found->second.front().order, resource_id});
+        push_pending_candidate_if_waiting(single_resource_pending_requests_, PendingCandidateKind::SingleResource, resource_id);
     }
 
     void discard_invalid_single_resource_fronts(const std::string& resource_id)
     {
-        const auto found = single_resource_pending_requests_.find(resource_id);
-        if (found == single_resource_pending_requests_.end())
+        discard_invalid_fronts(single_resource_pending_requests_, resource_id, PendingCandidateKind::SingleResource);
+    }
+
+    void push_pending_candidate(PendingCandidateKind kind, const std::string& key, std::uint64_t order)
+    {
+        pending_candidates_.push(PendingCandidate{order, kind, key});
+    }
+
+    void push_pending_candidate_if_waiting(const PendingRequestMap& pending_requests, PendingCandidateKind kind, const std::string& key)
+    {
+        const auto found = pending_requests.find(key);
+        if (found == pending_requests.end() || found->second.empty())
+        {
+            return;
+        }
+
+        push_pending_candidate(kind, key, found->second.front().order);
+    }
+
+    void discard_invalid_fronts(PendingRequestMap& pending_requests, const std::string& key, PendingCandidateKind kind)
+    {
+        const auto found = pending_requests.find(key);
+        if (found == pending_requests.end())
         {
             return;
         }
@@ -701,71 +700,49 @@ private:
 
         if (requests.empty())
         {
-            single_resource_pending_requests_.erase(found);
+            pending_requests.erase(found);
             return;
         }
 
         if (removed_any)
         {
-            push_single_resource_candidate(resource_id);
+            push_pending_candidate(kind, key, requests.front().order);
         }
     }
 
-    struct SingleResourceCandidateView
+    PendingTaskRequest take_front_request(PendingRequestMap& pending_requests, const std::string& key, PendingCandidateKind kind)
     {
-        std::uint64_t order{0};
-        std::string resource_id;
-    };
+        auto& requests = pending_requests.at(key);
+        auto request = std::move(requests.front());
+        requests.pop_front();
+        pending_candidates_.pop();
 
-    [[nodiscard]] std::optional<SingleResourceCandidateView> next_single_resource_candidate()
-    {
-        while (!single_resource_candidates_.empty())
+        if (requests.empty())
         {
-            const auto candidate = single_resource_candidates_.top();
-            discard_invalid_single_resource_fronts(candidate.resource_id);
-
-            const auto found = single_resource_pending_requests_.find(candidate.resource_id);
-            if (found == single_resource_pending_requests_.end())
-            {
-                single_resource_candidates_.pop();
-                continue;
-            }
-
-            const auto& request = found->second.front();
-            if (request.order != candidate.order)
-            {
-                single_resource_candidates_.pop();
-                continue;
-            }
-
-            const auto& runtime = resource_runtime(candidate.resource_id);
-            if (runtime.in_use >= runtime.capacity)
-            {
-                single_resource_candidates_.pop();
-                continue;
-            }
-
-            return SingleResourceCandidateView{request.order, candidate.resource_id};
+            pending_requests.erase(key);
+        }
+        else
+        {
+            push_pending_candidate(kind, key, requests.front().order);
         }
 
-        return std::nullopt;
+        return request;
+    }
+
+    void start_pending_request(PendingCandidateView candidate, double time)
+    {
+        if (candidate.kind == PendingCandidateKind::SingleResource)
+        {
+            start_single_resource_request(candidate.key, time);
+            return;
+        }
+
+        start_multi_resource_request(candidate.key, time, std::move(candidate.allocation));
     }
 
     void start_single_resource_request(const std::string& resource_id, double time)
     {
-        auto& requests = single_resource_pending_requests_.at(resource_id);
-        auto request = std::move(requests.front());
-        requests.pop_front();
-        single_resource_candidates_.pop();
-
-        if (requests.empty())
-        {
-            single_resource_pending_requests_.erase(resource_id);
-        }
-        else
-        {
-            push_single_resource_candidate(resource_id);
-        }
+        auto request = take_front_request(single_resource_pending_requests_, resource_id, PendingCandidateKind::SingleResource);
 
         const auto& node = flux::node(model_, request.task_id);
         note_request_dequeued(request);
@@ -774,19 +751,7 @@ private:
 
     void start_multi_resource_request(const std::string& task_id, double time, std::vector<std::string> allocation)
     {
-        auto& requests = multi_resource_pending_requests_.at(task_id);
-        auto request = std::move(requests.front());
-        requests.pop_front();
-        multi_resource_candidates_.pop();
-
-        if (requests.empty())
-        {
-            multi_resource_pending_requests_.erase(task_id);
-        }
-        else
-        {
-            push_multi_resource_candidate(task_id);
-        }
+        auto request = take_front_request(multi_resource_pending_requests_, task_id, PendingCandidateKind::MultiResource);
 
         const auto& node = flux::node(model_, request.task_id);
         note_request_dequeued(request);
@@ -819,9 +784,8 @@ private:
     DistributionSampler sampler_;
     std::priority_queue<ScheduledEvent, std::vector<ScheduledEvent>, ScheduledEventCompare> queue_;
     std::unordered_map<std::string, std::deque<PendingTaskRequest>> single_resource_pending_requests_;
-    std::priority_queue<SingleResourceCandidate, std::vector<SingleResourceCandidate>, SingleResourceCandidateCompare> single_resource_candidates_;
     std::unordered_map<std::string, std::deque<PendingTaskRequest>> multi_resource_pending_requests_;
-    std::priority_queue<MultiResourceCandidate, std::vector<MultiResourceCandidate>, MultiResourceCandidateCompare> multi_resource_candidates_;
+    std::priority_queue<PendingCandidate, std::vector<PendingCandidate>, PendingCandidateCompare> pending_candidates_;
     std::unordered_map<std::string, std::vector<std::string>> multi_resource_tasks_by_resource_;
     std::unordered_map<std::string, JoinBarrierState> join_barriers_;
     std::unordered_map<std::string, entt::entity> resource_entities_;

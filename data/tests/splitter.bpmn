@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+    xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+    xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+    xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+    xmlns:camunda="http://camunda.org/schema/1.0/bpmn" id="Definitions_Process_1775011634595" targetNamespace="http://bpmn.io/schema/bpmn">
+    <bpmn:process id="Process_splitter" name="分流器示例" isExecutable="true">
+        <bpmn:startEvent id="Event_start" name="发生器">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_initiatorType" value="random" />
+                    <camunda:property name="_distributionType" value="static" />
+                    <camunda:property name="_staticInterval" value="10" />
+                    <camunda:property name="_entityCount" value="100" />
+                    <camunda:property name="_entityType" value="entity" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:outgoing>Flow_0qg0i81</bpmn:outgoing>
+        </bpmn:startEvent>
+        <bpmn:sequenceFlow id="Flow_0qg0i81" sourceRef="Event_start" targetRef="Gateway_splitter" />
+        <bpmn:exclusiveGateway id="Gateway_splitter" name="分流器">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_criteria" value="by_weight" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:incoming>Flow_0qg0i81</bpmn:incoming>
+            <bpmn:outgoing>Flow_07g491b</bpmn:outgoing>
+            <bpmn:outgoing>Flow_1ee3144</bpmn:outgoing>
+            <bpmn:outgoing>Flow_0aoi10x</bpmn:outgoing>
+        </bpmn:exclusiveGateway>
+        <bpmn:task id="Activity_1" name="延时活动1">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_taskType" value="delay" />
+                    <camunda:property name="_distributionType" value="static" />
+                    <camunda:property name="_staticInterval" value="1" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:incoming>Flow_07g491b</bpmn:incoming>
+            <bpmn:outgoing>Flow_0t5r7m8</bpmn:outgoing>
+        </bpmn:task>
+        <bpmn:sequenceFlow id="Flow_07g491b" name="1" sourceRef="Gateway_splitter" targetRef="Activity_1" />
+        <bpmn:task id="Activity_2" name="延时活动2">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_taskType" value="delay" />
+                    <camunda:property name="_distributionType" value="static" />
+                    <camunda:property name="_staticInterval" value="2" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:incoming>Flow_1ee3144</bpmn:incoming>
+            <bpmn:outgoing>Flow_1cz2opn</bpmn:outgoing>
+        </bpmn:task>
+        <bpmn:sequenceFlow id="Flow_1ee3144" name="2" sourceRef="Gateway_splitter" targetRef="Activity_2" />
+        <bpmn:task id="Activity_3" name="延时活动3">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_taskType" value="delay" />
+                    <camunda:property name="_distributionType" value="static" />
+                    <camunda:property name="_staticInterval" value="3" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:incoming>Flow_0aoi10x</bpmn:incoming>
+            <bpmn:outgoing>Flow_0k7y124</bpmn:outgoing>
+        </bpmn:task>
+        <bpmn:sequenceFlow id="Flow_0aoi10x" name="3" sourceRef="Gateway_splitter" targetRef="Activity_3" />
+        <bpmn:endEvent id="Event_end" name="终点">
+            <bpmn:incoming>Flow_0t5r7m8</bpmn:incoming>
+            <bpmn:incoming>Flow_1cz2opn</bpmn:incoming>
+            <bpmn:incoming>Flow_0k7y124</bpmn:incoming>
+        </bpmn:endEvent>
+        <bpmn:sequenceFlow id="Flow_0t5r7m8" sourceRef="Activity_1" targetRef="Event_end" />
+        <bpmn:sequenceFlow id="Flow_1cz2opn" sourceRef="Activity_2" targetRef="Event_end" />
+        <bpmn:sequenceFlow id="Flow_0k7y124" sourceRef="Activity_3" targetRef="Event_end" />
+    </bpmn:process>
+</bpmn:definitions>

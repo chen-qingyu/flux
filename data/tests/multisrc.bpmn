@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+    xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+    xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+    xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+    xmlns:camunda="http://camunda.org/schema/1.0/bpmn" id="Definitions_Process_1775034001031" targetNamespace="http://bpmn.io/schema/bpmn">
+    <bpmn:process id="Process_multisrc" name="多资源银行业务流程" isExecutable="true">
+        <bpmn:startEvent id="Event_start" name="发生器">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_initiatorType" value="random" />
+                    <camunda:property name="_distributionType" value="static" />
+                    <camunda:property name="_staticInterval" value="1" />
+                    <camunda:property name="_entityCount" value="10000" />
+                    <camunda:property name="_entityType" value="customer" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:outgoing>Flow_0oqs9mt</bpmn:outgoing>
+        </bpmn:startEvent>
+        <bpmn:task id="Activity_process" name="办理业务">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_taskType" value="delay" />
+                    <camunda:property name="_resourceStrategy" value="all" />
+                    <camunda:property name="_distributionType" value="uniform" />
+                    <camunda:property name="_min" value="10" />
+                    <camunda:property name="_max" value="20" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:incoming>Flow_0oqs9mt</bpmn:incoming>
+            <bpmn:outgoing>Flow_1wj5vjj</bpmn:outgoing>
+        </bpmn:task>
+        <bpmn:sequenceFlow id="Flow_0oqs9mt" sourceRef="Event_start" targetRef="Activity_process" />
+        <bpmn:dataStoreReference id="DataStoreReference_teller" name="柜员">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_resourceType" value="resource" />
+                    <camunda:property name="_capacity" value="1" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+        </bpmn:dataStoreReference>
+        <bpmn:dataStoreReference id="DataStoreReference_computer" name="电脑">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_resourceType" value="resource" />
+                    <camunda:property name="_capacity" value="1" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+        </bpmn:dataStoreReference>
+        <bpmn:endEvent id="Event_end" name="终点">
+            <bpmn:incoming>Flow_1wj5vjj</bpmn:incoming>
+        </bpmn:endEvent>
+        <bpmn:sequenceFlow id="Flow_1wj5vjj" sourceRef="Activity_process" targetRef="Event_end" />
+        <bpmn:association id="Association_1rophg2" associationDirection="Both" sourceRef="Activity_process" targetRef="DataStoreReference_teller" />
+        <bpmn:association id="Association_1dm24kr" associationDirection="Both" sourceRef="Activity_process" targetRef="DataStoreReference_computer" />
+    </bpmn:process>
+</bpmn:definitions>

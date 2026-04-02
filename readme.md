@@ -21,7 +21,7 @@ BPMN File -> Parser -> Model (ECS Graph) -> Engine (DOD + EnTT) -> Reporter -> O
 - `parallelGateway`
 - `dataStoreReference`
 - `sequenceFlow`
-- `association`
+- `association`/`dataOutputAssociation`
 
 支持的能力：
 
@@ -104,7 +104,7 @@ python run.py data/demo.bpmn --seed 42
 
 如果任务需要耗时，必须提供 `_distributionType`。
 
-如果任务需要资源，必须提供 `_resourceStrategy=all|any`，然后再通过 `association` 把任务连到 `dataStoreReference`。
+如果任务需要资源，必须提供 `_resourceStrategy=all|any`，然后再通过 `association`，或在 `task` 内通过 `dataOutputAssociation`，把任务连到 `dataStoreReference`。
 
 ### 资源
 

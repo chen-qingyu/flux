@@ -445,6 +445,7 @@ private:
         definition.name = child.attribute("name").value();
         definition.type = NodeType::Task;
         definition.task = read_task_spec(child);
+        parse_task_data_output_associations(child, definition.id);
         model_.nodes.insert_or_assign(definition.id, std::move(definition));
     }
 
@@ -498,6 +499,36 @@ private:
         associations_.emplace_back(
             read_required_attribute(child, "sourceRef", "Association"),
             read_required_attribute(child, "targetRef", "Association"));
+    }
+
+    void parse_task_data_output_associations(const pugi::xml_node& task_node, const std::string& task_id)
+    {
+        for (const auto& child : task_node.children())
+        {
+            if (local_name(child.name()) != "dataOutputAssociation")
+            {
+                continue;
+            }
+
+            const auto context = "Task '" + task_id + "' dataOutputAssociation";
+            const auto target_ref = find_association_target_ref(child, context);
+            associations_.emplace_back(task_id, target_ref);
+        }
+    }
+
+    [[nodiscard]] std::string find_association_target_ref(const pugi::xml_node& association_node, const std::string& context) const
+    {
+        for (const auto& child : association_node.children())
+        {
+            if (local_name(child.name()) != "targetRef")
+            {
+                continue;
+            }
+
+            return child.child_value();
+        }
+
+        throw std::runtime_error(context + " is missing targetRef.");
     }
 
     void finalize_model()

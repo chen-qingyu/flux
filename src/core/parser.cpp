@@ -651,9 +651,17 @@ private:
                         throw std::runtime_error("Task '" + node_id + "' must have outgoing sequence flow.");
                     }
                     validate_distribution(definition.task->duration_distribution, "Task '" + node_id + "'");
-                    if (model_.task_resources.contains(node_id) && !model_.task_resources.at(node_id).empty() && !definition.task->resource_strategy.has_value())
                     {
-                        throw std::runtime_error("Task '" + node_id + "' must provide '_resourceStrategy' when resources are associated.");
+                        std::size_t resource_count = 0;
+                        if (const auto resources = model_.task_resources.find(node_id); resources != model_.task_resources.end())
+                        {
+                            resource_count = resources->second.size();
+                        }
+
+                        if (resource_count > 1 && !definition.task->resource_strategy.has_value())
+                        {
+                            throw std::runtime_error("Task '" + node_id + "' must provide '_resourceStrategy' when multiple resources are associated.");
+                        }
                     }
                     break;
                 case NodeType::EndEvent:

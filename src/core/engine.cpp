@@ -336,7 +336,7 @@ public:
         return 0;
     }
 
-    [[nodiscard]] std::vector<std::string> allocate_resources_if_possible(const std::string& task_id, ResourceStrategy strategy)
+    [[nodiscard]] std::vector<std::string> allocate_resources_if_possible(const std::string& task_id, const std::optional<ResourceStrategy>& strategy)
     {
         const auto& resource_ids = task_resources(task_id);
         if (resource_ids.empty())
@@ -344,7 +344,23 @@ public:
             return {};
         }
 
-        if (strategy == ResourceStrategy::All)
+        if (!strategy.has_value())
+        {
+            if (resource_ids.size() != 1)
+            {
+                return {};
+            }
+
+            const auto& resource_id = resource_ids.front();
+            const auto& runtime = resource_runtime(resource_id);
+            if (runtime.in_use >= runtime.capacity)
+            {
+                return {};
+            }
+            return {resource_id};
+        }
+
+        if (*strategy == ResourceStrategy::All)
         {
             for (const auto& resource_id : resource_ids)
             {
@@ -357,7 +373,7 @@ public:
             return resource_ids;
         }
 
-        if (strategy == ResourceStrategy::Any)
+        if (*strategy == ResourceStrategy::Any)
         {
             for (const auto& resource_id : resource_ids)
             {
@@ -630,7 +646,7 @@ private:
             }
 
             const auto& node = flux::node(model_, request.task_id);
-            auto allocation = allocate_resources_if_possible(request.task_id, node.task->resource_strategy.value());
+            auto allocation = allocate_resources_if_possible(request.task_id, node.task->resource_strategy);
             if (allocation.empty())
             {
                 pending_candidates_.pop();
@@ -853,7 +869,7 @@ void Engine::handle_arrive_node(RunState& state, const ScheduledEvent& event) co
 
         if (!state.has_pending_requests())
         {
-            const auto allocation = state.allocate_resources_if_possible(node.id, node.task->resource_strategy.value());
+            const auto allocation = state.allocate_resources_if_possible(node.id, node.task->resource_strategy);
             if (!allocation.empty())
             {
                 state.start_task(event.token, node, event.time, allocation, 0.0);

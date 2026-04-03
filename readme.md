@@ -104,7 +104,7 @@ python run.py data/demo.bpmn --seed 42
 
 如果任务需要耗时，必须提供 `_distributionType`。
 
-如果任务需要资源，必须提供 `_resourceStrategy=all|any`，然后再通过 `association`，或在 `task` 内通过 `dataOutputAssociation`，把任务连到 `dataStoreReference`。
+如果任务只关联一种资源，可以省略 `_resourceStrategy`；如果任务关联了多种资源，则必须提供 `_resourceStrategy=all|any`。资源需要通过 `association`，或在 `task` 内通过 `dataOutputAssociation`，把任务连到 `dataStoreReference`。
 
 ### 资源
 

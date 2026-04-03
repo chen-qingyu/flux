@@ -32,6 +32,12 @@ enum class ResourceStrategy
     Any,
 };
 
+enum class TaskType
+{
+    Delay,
+    Transport,
+};
+
 enum class GatewayCriteria
 {
     ByWeight,
@@ -53,8 +59,10 @@ struct GeneratorSpec
 
 struct TaskSpec
 {
+    TaskType type{TaskType::Delay};
     DistributionSpec duration_distribution{};
     std::optional<ResourceStrategy> resource_strategy;
+    double distance{0.0};
 };
 
 struct NodeDefinition

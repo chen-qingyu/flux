@@ -37,6 +37,7 @@ void run(const std::string& file_path, std::uint64_t seed)
     spdlog::info("Generated entities: {}", result.generated_entities);
     spdlog::info("Completed entities: {}", result.completed_entities);
     spdlog::info("Simulation horizon: {:.3f}", result.simulation_horizon);
+    spdlog::info("Total transport distance: {:.3f}", result.total_transport_distance);
     spdlog::info("Execution time: {:.3f} s", duration);
 }
 

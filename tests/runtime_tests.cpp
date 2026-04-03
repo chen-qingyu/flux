@@ -117,3 +117,14 @@ TEST_CASE("Weighted splitter routes entities across outgoing branches", "[runtim
     REQUIRE(branch_1_ratio < branch_2_ratio);
     REQUIRE(branch_2_ratio < branch_3_ratio);
 }
+
+TEST_CASE("Transport task accumulates total distance on completion", "[runtime][transport]")
+{
+    const auto result = flux::test_support::run_model(std::filesystem::path("data") / "tests" / "transport_minimal.bpmn");
+
+    const auto task_finishes = flux::test_support::select_events(result, "task_finish");
+    REQUIRE(task_finishes.size() == 3);
+    REQUIRE(result.generated_entities == 3);
+    REQUIRE(result.completed_entities == 3);
+    REQUIRE(std::abs(result.total_transport_distance - 61.2) < 1e-9);
+}

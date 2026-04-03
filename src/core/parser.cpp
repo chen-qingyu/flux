@@ -323,12 +323,25 @@ private:
         const auto context = "Task '" + read_required_attribute(node, "id", "Task") + "'";
 
         const auto task_type = lower_copy(read_required_text(properties, "_taskType", context));
-        if (task_type != "delay")
+        TaskSpec task;
+        if (task_type == "delay")
         {
-            throw std::runtime_error(context + " uses unsupported _taskType '" + task_type + "'. Only 'delay' is supported.");
+            task.type = TaskType::Delay;
+        }
+        else if (task_type == "transport")
+        {
+            task.type = TaskType::Transport;
+            task.distance = read_required_double(properties, "_distance", context);
+            if (task.distance < 0.0)
+            {
+                throw std::runtime_error(context + " property '_distance' must be non-negative.");
+            }
+        }
+        else
+        {
+            throw std::runtime_error(context + " uses unsupported _taskType '" + task_type + "'. Only 'delay' and 'transport' are supported.");
         }
 
-        TaskSpec task;
         task.duration_distribution = read_distribution(properties, "_distributionType", context);
         if (properties.contains("_resourceStrategy"))
         {
@@ -392,6 +405,11 @@ private:
             return;
         }
         if (type_name == "task")
+        {
+            parse_task(child);
+            return;
+        }
+        if (type_name == "transportTask")
         {
             parse_task(child);
             return;

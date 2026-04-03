@@ -55,3 +55,15 @@ TEST_CASE("Parser reads weighted splitter model", "[parser][splitter]")
     REQUIRE(flow_2.weight == 2.0);
     REQUIRE(flow_3.weight == 3.0);
 }
+
+TEST_CASE("Parser reads transport task model", "[parser][transport]")
+{
+    const auto model = flux::test_support::parse_model(std::filesystem::path("data") / "tests" / "transport_minimal.bpmn");
+
+    const auto& task = flux::node(model, "Task_transport");
+    REQUIRE(task.task.has_value());
+    REQUIRE(task.task->type == flux::TaskType::Transport);
+    REQUIRE(task.task->distance == 20.4);
+    REQUIRE(task.task->duration_distribution.type == flux::DistributionType::Static);
+    REQUIRE(task.task->duration_distribution.first == 2.0);
+}

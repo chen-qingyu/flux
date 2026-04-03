@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+    xmlns:camunda="http://camunda.org/schema/1.0/bpmn"
+    xmlns:iscsim="http://iscsim.example/schema/bpmn" id="Definitions_Transport_Minimal" targetNamespace="http://bpmn.io/schema/bpmn">
+    <bpmn:process id="Process_transport_minimal" name="运输任务最小流程" isExecutable="true">
+        <bpmn:startEvent id="Event_start" name="运输发生器">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_initiatorType" value="random" />
+                    <camunda:property name="_distributionType" value="static" />
+                    <camunda:property name="_entityCount" value="3" />
+                    <camunda:property name="_entityType" value="package" />
+                    <camunda:property name="_staticInterval" value="1" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:outgoing>Flow_start_to_transport</bpmn:outgoing>
+        </bpmn:startEvent>
+        <iscsim:transportTask id="Task_transport" name="运输任务">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_taskType" value="transport" />
+                    <camunda:property name="_distributionType" value="static" />
+                    <camunda:property name="_staticInterval" value="2" />
+                    <camunda:property name="_distance" value="20.4" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:incoming>Flow_start_to_transport</bpmn:incoming>
+            <bpmn:outgoing>Flow_transport_to_end</bpmn:outgoing>
+        </iscsim:transportTask>
+        <bpmn:endEvent id="Event_end" name="结束">
+            <bpmn:incoming>Flow_transport_to_end</bpmn:incoming>
+        </bpmn:endEvent>
+        <bpmn:sequenceFlow id="Flow_start_to_transport" sourceRef="Event_start" targetRef="Task_transport" />
+        <bpmn:sequenceFlow id="Flow_transport_to_end" sourceRef="Task_transport" targetRef="Event_end" />
+    </bpmn:process>
+</bpmn:definitions>

@@ -302,6 +302,11 @@ public:
         ++result_.completed_entities;
     }
 
+    void add_transport_distance(double distance)
+    {
+        result_.total_transport_distance += distance;
+    }
+
     [[nodiscard]] entt::registry& registry()
     {
         return registry_;
@@ -915,6 +920,10 @@ void Engine::handle_finish_task(RunState& state, const ScheduledEvent& event) co
     const auto token_component = state.token(event.token);
     const auto active_task = state.registry().get<ActiveTask>(event.token);
     state.apply_release(active_task.allocated_resources, event.time, token_component.entity_id, node.id);
+    if (node.task->type == TaskType::Transport)
+    {
+        state.add_transport_distance(node.task->distance);
+    }
     state.log_event(event.time, token_component, node, "task_finish");
     state.registry().remove<ActiveTask>(event.token);
 

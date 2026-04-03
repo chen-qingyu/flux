@@ -100,9 +100,11 @@ python run.py data/demo.bpmn --seed 42
 
 ### 任务
 
-任务至少要提供 `_taskType`。
+任务至少要提供 `_taskType`，当前支持 `delay` 和 `transport`。
 
 如果任务需要耗时，必须提供 `_distributionType`。
+
+当 `_taskType=transport` 时，还必须提供 `_distance`，表示该次运输任务完成后累计到引擎结果中的运输距离。
 
 如果任务只关联一种资源，可以省略 `_resourceStrategy`；如果任务关联了多种资源，则必须提供 `_resourceStrategy=all|any`。资源需要通过 `association`，或在 `task` 内通过 `dataOutputAssociation`，把任务连到 `dataStoreReference`。
 

@@ -1,0 +1,331 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+    xmlns:camunda="http://camunda.org/schema/1.0/bpmn" id="Definitions_Arbitration" targetNamespace="http://bpmn.io/schema/bpmn">
+    <bpmn:process id="Process_arbitration" name="资源仲裁综合流程" isExecutable="true">
+        <bpmn:startEvent id="Event_start_hold_partial_r1" name="部分释放占用P1发生器">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_initiatorType" value="random" />
+                    <camunda:property name="_distributionType" value="static" />
+                    <camunda:property name="_entityCount" value="1" />
+                    <camunda:property name="_entityType" value="hold_partial_r1" />
+                    <camunda:property name="_staticInterval" value="1" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:outgoing>Flow_hold_partial_r1_start_to_task</bpmn:outgoing>
+        </bpmn:startEvent>
+        <bpmn:startEvent id="Event_start_hold_partial_r2" name="部分释放占用P2发生器">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_initiatorType" value="random" />
+                    <camunda:property name="_distributionType" value="static" />
+                    <camunda:property name="_entityCount" value="1" />
+                    <camunda:property name="_entityType" value="hold_partial_r2" />
+                    <camunda:property name="_staticInterval" value="1" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:outgoing>Flow_hold_partial_r2_start_to_task</bpmn:outgoing>
+        </bpmn:startEvent>
+        <bpmn:startEvent id="Event_start_wait_partial_all" name="部分释放等待全部发生器">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_initiatorType" value="random" />
+                    <camunda:property name="_distributionType" value="static" />
+                    <camunda:property name="_entityCount" value="1" />
+                    <camunda:property name="_entityType" value="partial_all" />
+                    <camunda:property name="_staticInterval" value="1" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:outgoing>Flow_wait_partial_all_start_to_delay</bpmn:outgoing>
+        </bpmn:startEvent>
+        <bpmn:startEvent id="Event_start_wait_partial_p1" name="部分释放等待P1发生器">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_initiatorType" value="random" />
+                    <camunda:property name="_distributionType" value="static" />
+                    <camunda:property name="_entityCount" value="1" />
+                    <camunda:property name="_entityType" value="partial_p1" />
+                    <camunda:property name="_staticInterval" value="1" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:outgoing>Flow_wait_partial_p1_start_to_delay</bpmn:outgoing>
+        </bpmn:startEvent>
+
+        <bpmn:startEvent id="Event_start_hold_joint_j1" name="同时释放占用J1发生器">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_initiatorType" value="random" />
+                    <camunda:property name="_distributionType" value="static" />
+                    <camunda:property name="_entityCount" value="1" />
+                    <camunda:property name="_entityType" value="hold_joint_j1" />
+                    <camunda:property name="_staticInterval" value="1" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:outgoing>Flow_hold_joint_j1_start_to_task</bpmn:outgoing>
+        </bpmn:startEvent>
+        <bpmn:startEvent id="Event_start_hold_joint_j2" name="同时释放占用J2发生器">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_initiatorType" value="random" />
+                    <camunda:property name="_distributionType" value="static" />
+                    <camunda:property name="_entityCount" value="1" />
+                    <camunda:property name="_entityType" value="hold_joint_j2" />
+                    <camunda:property name="_staticInterval" value="1" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:outgoing>Flow_hold_joint_j2_start_to_task</bpmn:outgoing>
+        </bpmn:startEvent>
+        <bpmn:startEvent id="Event_start_wait_joint_all" name="同时释放等待全部发生器">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_initiatorType" value="random" />
+                    <camunda:property name="_distributionType" value="static" />
+                    <camunda:property name="_entityCount" value="1" />
+                    <camunda:property name="_entityType" value="joint_all" />
+                    <camunda:property name="_staticInterval" value="1" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:outgoing>Flow_wait_joint_all_start_to_delay</bpmn:outgoing>
+        </bpmn:startEvent>
+        <bpmn:startEvent id="Event_start_wait_joint_j1" name="同时释放等待J1发生器">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_initiatorType" value="random" />
+                    <camunda:property name="_distributionType" value="static" />
+                    <camunda:property name="_entityCount" value="1" />
+                    <camunda:property name="_entityType" value="joint_j1" />
+                    <camunda:property name="_staticInterval" value="1" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:outgoing>Flow_wait_joint_j1_start_to_delay</bpmn:outgoing>
+        </bpmn:startEvent>
+
+        <bpmn:task id="Task_hold_partial_r1" name="占用P1任务">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_taskType" value="delay" />
+                    <camunda:property name="_distributionType" value="static" />
+                    <camunda:property name="_staticInterval" value="4" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:incoming>Flow_hold_partial_r1_start_to_task</bpmn:incoming>
+            <bpmn:outgoing>Flow_hold_partial_r1_task_to_end</bpmn:outgoing>
+        </bpmn:task>
+        <bpmn:task id="Task_hold_partial_r2" name="占用P2任务">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_taskType" value="delay" />
+                    <camunda:property name="_distributionType" value="static" />
+                    <camunda:property name="_staticInterval" value="6" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:incoming>Flow_hold_partial_r2_start_to_task</bpmn:incoming>
+            <bpmn:outgoing>Flow_hold_partial_r2_task_to_end</bpmn:outgoing>
+        </bpmn:task>
+        <bpmn:task id="Task_delay_partial_all" name="延迟到达全部资源任务">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_taskType" value="delay" />
+                    <camunda:property name="_distributionType" value="static" />
+                    <camunda:property name="_staticInterval" value="1" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:incoming>Flow_wait_partial_all_start_to_delay</bpmn:incoming>
+            <bpmn:outgoing>Flow_delay_partial_all_to_need_all</bpmn:outgoing>
+        </bpmn:task>
+        <bpmn:task id="Task_need_partial_all" name="需要P1和P2任务">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_taskType" value="delay" />
+                    <camunda:property name="_resourceStrategy" value="all" />
+                    <camunda:property name="_distributionType" value="static" />
+                    <camunda:property name="_staticInterval" value="1" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:incoming>Flow_delay_partial_all_to_need_all</bpmn:incoming>
+            <bpmn:outgoing>Flow_need_partial_all_to_end</bpmn:outgoing>
+        </bpmn:task>
+        <bpmn:task id="Task_delay_partial_p1" name="延迟到达P1任务">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_taskType" value="delay" />
+                    <camunda:property name="_distributionType" value="static" />
+                    <camunda:property name="_staticInterval" value="2" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:incoming>Flow_wait_partial_p1_start_to_delay</bpmn:incoming>
+            <bpmn:outgoing>Flow_delay_partial_p1_to_need_p1</bpmn:outgoing>
+        </bpmn:task>
+        <bpmn:task id="Task_need_partial_p1" name="只需要P1任务">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_taskType" value="delay" />
+                    <camunda:property name="_distributionType" value="static" />
+                    <camunda:property name="_staticInterval" value="1" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:incoming>Flow_delay_partial_p1_to_need_p1</bpmn:incoming>
+            <bpmn:outgoing>Flow_need_partial_p1_to_end</bpmn:outgoing>
+        </bpmn:task>
+
+        <bpmn:task id="Task_hold_joint_j1" name="占用J1任务">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_taskType" value="delay" />
+                    <camunda:property name="_distributionType" value="static" />
+                    <camunda:property name="_staticInterval" value="4" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:incoming>Flow_hold_joint_j1_start_to_task</bpmn:incoming>
+            <bpmn:outgoing>Flow_hold_joint_j1_task_to_end</bpmn:outgoing>
+        </bpmn:task>
+        <bpmn:task id="Task_hold_joint_j2" name="占用J2任务">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_taskType" value="delay" />
+                    <camunda:property name="_distributionType" value="static" />
+                    <camunda:property name="_staticInterval" value="4" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:incoming>Flow_hold_joint_j2_start_to_task</bpmn:incoming>
+            <bpmn:outgoing>Flow_hold_joint_j2_task_to_end</bpmn:outgoing>
+        </bpmn:task>
+        <bpmn:task id="Task_delay_joint_all" name="延迟到达全部J资源任务">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_taskType" value="delay" />
+                    <camunda:property name="_distributionType" value="static" />
+                    <camunda:property name="_staticInterval" value="1" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:incoming>Flow_wait_joint_all_start_to_delay</bpmn:incoming>
+            <bpmn:outgoing>Flow_delay_joint_all_to_need_all</bpmn:outgoing>
+        </bpmn:task>
+        <bpmn:task id="Task_need_joint_all" name="需要J1和J2任务">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_taskType" value="delay" />
+                    <camunda:property name="_resourceStrategy" value="all" />
+                    <camunda:property name="_distributionType" value="static" />
+                    <camunda:property name="_staticInterval" value="1" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:incoming>Flow_delay_joint_all_to_need_all</bpmn:incoming>
+            <bpmn:outgoing>Flow_need_joint_all_to_end</bpmn:outgoing>
+        </bpmn:task>
+        <bpmn:task id="Task_delay_joint_j1" name="延迟到达J1任务">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_taskType" value="delay" />
+                    <camunda:property name="_distributionType" value="static" />
+                    <camunda:property name="_staticInterval" value="2" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:incoming>Flow_wait_joint_j1_start_to_delay</bpmn:incoming>
+            <bpmn:outgoing>Flow_delay_joint_j1_to_need_j1</bpmn:outgoing>
+        </bpmn:task>
+        <bpmn:task id="Task_need_joint_j1" name="只需要J1任务">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_taskType" value="delay" />
+                    <camunda:property name="_distributionType" value="static" />
+                    <camunda:property name="_staticInterval" value="1" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:incoming>Flow_delay_joint_j1_to_need_j1</bpmn:incoming>
+            <bpmn:outgoing>Flow_need_joint_j1_to_end</bpmn:outgoing>
+        </bpmn:task>
+
+        <bpmn:dataStoreReference id="DataStoreReference_partial_r1" name="P1">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_resourceType" value="resource" />
+                    <camunda:property name="_capacity" value="1" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+        </bpmn:dataStoreReference>
+        <bpmn:dataStoreReference id="DataStoreReference_partial_r2" name="P2">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_resourceType" value="resource" />
+                    <camunda:property name="_capacity" value="1" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+        </bpmn:dataStoreReference>
+        <bpmn:dataStoreReference id="DataStoreReference_joint_j1" name="J1">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_resourceType" value="resource" />
+                    <camunda:property name="_capacity" value="1" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+        </bpmn:dataStoreReference>
+        <bpmn:dataStoreReference id="DataStoreReference_joint_j2" name="J2">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_resourceType" value="resource" />
+                    <camunda:property name="_capacity" value="1" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+        </bpmn:dataStoreReference>
+
+        <bpmn:endEvent id="Event_end_hold_partial_r1" name="占用P1结束">
+            <bpmn:incoming>Flow_hold_partial_r1_task_to_end</bpmn:incoming>
+        </bpmn:endEvent>
+        <bpmn:endEvent id="Event_end_hold_partial_r2" name="占用P2结束">
+            <bpmn:incoming>Flow_hold_partial_r2_task_to_end</bpmn:incoming>
+        </bpmn:endEvent>
+        <bpmn:endEvent id="Event_end_need_partial_all" name="P1和P2结束">
+            <bpmn:incoming>Flow_need_partial_all_to_end</bpmn:incoming>
+        </bpmn:endEvent>
+        <bpmn:endEvent id="Event_end_need_partial_p1" name="P1结束">
+            <bpmn:incoming>Flow_need_partial_p1_to_end</bpmn:incoming>
+        </bpmn:endEvent>
+        <bpmn:endEvent id="Event_end_hold_joint_j1" name="占用J1结束">
+            <bpmn:incoming>Flow_hold_joint_j1_task_to_end</bpmn:incoming>
+        </bpmn:endEvent>
+        <bpmn:endEvent id="Event_end_hold_joint_j2" name="占用J2结束">
+            <bpmn:incoming>Flow_hold_joint_j2_task_to_end</bpmn:incoming>
+        </bpmn:endEvent>
+        <bpmn:endEvent id="Event_end_need_joint_all" name="J1和J2结束">
+            <bpmn:incoming>Flow_need_joint_all_to_end</bpmn:incoming>
+        </bpmn:endEvent>
+        <bpmn:endEvent id="Event_end_need_joint_j1" name="J1结束">
+            <bpmn:incoming>Flow_need_joint_j1_to_end</bpmn:incoming>
+        </bpmn:endEvent>
+
+        <bpmn:sequenceFlow id="Flow_hold_partial_r1_start_to_task" sourceRef="Event_start_hold_partial_r1" targetRef="Task_hold_partial_r1" />
+        <bpmn:sequenceFlow id="Flow_hold_partial_r1_task_to_end" sourceRef="Task_hold_partial_r1" targetRef="Event_end_hold_partial_r1" />
+        <bpmn:sequenceFlow id="Flow_hold_partial_r2_start_to_task" sourceRef="Event_start_hold_partial_r2" targetRef="Task_hold_partial_r2" />
+        <bpmn:sequenceFlow id="Flow_hold_partial_r2_task_to_end" sourceRef="Task_hold_partial_r2" targetRef="Event_end_hold_partial_r2" />
+        <bpmn:sequenceFlow id="Flow_wait_partial_all_start_to_delay" sourceRef="Event_start_wait_partial_all" targetRef="Task_delay_partial_all" />
+        <bpmn:sequenceFlow id="Flow_delay_partial_all_to_need_all" sourceRef="Task_delay_partial_all" targetRef="Task_need_partial_all" />
+        <bpmn:sequenceFlow id="Flow_need_partial_all_to_end" sourceRef="Task_need_partial_all" targetRef="Event_end_need_partial_all" />
+        <bpmn:sequenceFlow id="Flow_wait_partial_p1_start_to_delay" sourceRef="Event_start_wait_partial_p1" targetRef="Task_delay_partial_p1" />
+        <bpmn:sequenceFlow id="Flow_delay_partial_p1_to_need_p1" sourceRef="Task_delay_partial_p1" targetRef="Task_need_partial_p1" />
+        <bpmn:sequenceFlow id="Flow_need_partial_p1_to_end" sourceRef="Task_need_partial_p1" targetRef="Event_end_need_partial_p1" />
+
+        <bpmn:sequenceFlow id="Flow_hold_joint_j1_start_to_task" sourceRef="Event_start_hold_joint_j1" targetRef="Task_hold_joint_j1" />
+        <bpmn:sequenceFlow id="Flow_hold_joint_j1_task_to_end" sourceRef="Task_hold_joint_j1" targetRef="Event_end_hold_joint_j1" />
+        <bpmn:sequenceFlow id="Flow_hold_joint_j2_start_to_task" sourceRef="Event_start_hold_joint_j2" targetRef="Task_hold_joint_j2" />
+        <bpmn:sequenceFlow id="Flow_hold_joint_j2_task_to_end" sourceRef="Task_hold_joint_j2" targetRef="Event_end_hold_joint_j2" />
+        <bpmn:sequenceFlow id="Flow_wait_joint_all_start_to_delay" sourceRef="Event_start_wait_joint_all" targetRef="Task_delay_joint_all" />
+        <bpmn:sequenceFlow id="Flow_delay_joint_all_to_need_all" sourceRef="Task_delay_joint_all" targetRef="Task_need_joint_all" />
+        <bpmn:sequenceFlow id="Flow_need_joint_all_to_end" sourceRef="Task_need_joint_all" targetRef="Event_end_need_joint_all" />
+        <bpmn:sequenceFlow id="Flow_wait_joint_j1_start_to_delay" sourceRef="Event_start_wait_joint_j1" targetRef="Task_delay_joint_j1" />
+        <bpmn:sequenceFlow id="Flow_delay_joint_j1_to_need_j1" sourceRef="Task_delay_joint_j1" targetRef="Task_need_joint_j1" />
+        <bpmn:sequenceFlow id="Flow_need_joint_j1_to_end" sourceRef="Task_need_joint_j1" targetRef="Event_end_need_joint_j1" />
+
+        <bpmn:association id="Association_hold_partial_r1" associationDirection="Both" sourceRef="Task_hold_partial_r1" targetRef="DataStoreReference_partial_r1" />
+        <bpmn:association id="Association_hold_partial_r2" associationDirection="Both" sourceRef="Task_hold_partial_r2" targetRef="DataStoreReference_partial_r2" />
+        <bpmn:association id="Association_need_partial_all_r1" associationDirection="Both" sourceRef="Task_need_partial_all" targetRef="DataStoreReference_partial_r1" />
+        <bpmn:association id="Association_need_partial_all_r2" associationDirection="Both" sourceRef="Task_need_partial_all" targetRef="DataStoreReference_partial_r2" />
+        <bpmn:association id="Association_need_partial_p1" associationDirection="Both" sourceRef="Task_need_partial_p1" targetRef="DataStoreReference_partial_r1" />
+        <bpmn:association id="Association_hold_joint_j1" associationDirection="Both" sourceRef="Task_hold_joint_j1" targetRef="DataStoreReference_joint_j1" />
+        <bpmn:association id="Association_hold_joint_j2" associationDirection="Both" sourceRef="Task_hold_joint_j2" targetRef="DataStoreReference_joint_j2" />
+        <bpmn:association id="Association_need_joint_all_j1" associationDirection="Both" sourceRef="Task_need_joint_all" targetRef="DataStoreReference_joint_j1" />
+        <bpmn:association id="Association_need_joint_all_j2" associationDirection="Both" sourceRef="Task_need_joint_all" targetRef="DataStoreReference_joint_j2" />
+        <bpmn:association id="Association_need_joint_j1" associationDirection="Both" sourceRef="Task_need_joint_j1" targetRef="DataStoreReference_joint_j1" />
+    </bpmn:process>
+</bpmn:definitions>

@@ -1,0 +1,9 @@
+time,resource_id,resource_name,change_type,in_use,available,queue_length,entity_id,task_id
+0.000,DataStoreReference_driver,司机,allocate,1,0,0,子集释放发生器_subset_case_1,Task_acquire_subset
+0.000,DataStoreReference_forklift,叉车,allocate,1,0,0,子集释放发生器_subset_case_1,Task_acquire_subset
+3.000,DataStoreReference_forklift,叉车,release,0,1,0,子集释放发生器_subset_case_1,Task_release_bound
+5.000,DataStoreReference_driver,司机,release,0,1,0,子集释放发生器_subset_case_1,Task_release_all_remaining
+10.000,DataStoreReference_driver,司机,allocate,1,0,0,全部释放发生器_all_case_0,Task_acquire_all
+10.000,DataStoreReference_forklift,叉车,allocate,1,0,0,全部释放发生器_all_case_0,Task_acquire_all
+13.000,DataStoreReference_driver,司机,release,0,1,0,全部释放发生器_all_case_0,Task_release_all
+13.000,DataStoreReference_forklift,叉车,release,0,1,0,全部释放发生器_all_case_0,Task_release_all

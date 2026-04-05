@@ -2,11 +2,6 @@
 
 #include "test_support.hpp"
 
-TEST_CASE("AND gateway golden CSV stays stable", "[golden][and]")
-{
-    flux::test_support::require_report_matches(std::filesystem::path("data") / "tests" / "and_minimal.bpmn", "and");
-}
-
 TEST_CASE("Any-resource golden CSV stays stable", "[golden][any]")
 {
     flux::test_support::require_report_matches(std::filesystem::path("data") / "tests" / "any_resource_minimal.bpmn", "any");
@@ -22,17 +17,17 @@ TEST_CASE("FIFO queue golden CSV stays stable", "[golden][fifo]")
     flux::test_support::require_report_matches(std::filesystem::path("data") / "tests" / "fifo_queue_minimal.bpmn", "fifo");
 }
 
-TEST_CASE("Partial-release oldest-feasible golden CSV stays stable", "[golden][same-timestamp]")
+TEST_CASE("Arbitration golden CSV stays stable", "[golden][same-timestamp]")
 {
-    flux::test_support::require_report_matches(std::filesystem::path("data") / "tests" / "same_timestamp_partial_release.bpmn", "same_timestamp_partial_release");
+    flux::test_support::require_report_matches(std::filesystem::path("data") / "tests" / "arbitration.bpmn", "arbitration");
 }
 
-TEST_CASE("Joint-release oldest-feasible golden CSV stays stable", "[golden][same-timestamp]")
+TEST_CASE("Lifecycle golden CSV stays stable", "[golden][resource-lifecycle]")
 {
-    flux::test_support::require_report_matches(std::filesystem::path("data") / "tests" / "same_timestamp_joint_release.bpmn", "same_timestamp_joint_release");
+    flux::test_support::require_report_matches(std::filesystem::path("data") / "tests" / "lifecycle.bpmn", "lifecycle");
 }
 
-TEST_CASE("Resource binding golden CSV stays stable", "[golden][resource-lifecycle]")
+TEST_CASE("Transport golden CSV stays stable", "[golden][transport]")
 {
-    flux::test_support::require_report_matches(std::filesystem::path("data") / "tests" / "resource_binding.bpmn", "resource_binding");
+    flux::test_support::require_report_matches(std::filesystem::path("data") / "tests" / "transport_minimal.bpmn", "transport");
 }

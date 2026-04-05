@@ -68,22 +68,41 @@ TEST_CASE("Parser reads transport task model", "[parser][transport]")
     REQUIRE(task.task->duration_distribution.first == 2.0);
 }
 
-TEST_CASE("Parser reads acquire and release resource tasks", "[parser][resource-lifecycle]")
+TEST_CASE("Parser reads resource lifecycle model", "[parser][resource-lifecycle]")
 {
-    const auto model = flux::test_support::parse_model(std::filesystem::path("data") / "tests" / "resource_binding.bpmn");
+    const auto model = flux::test_support::parse_model(std::filesystem::path("data") / "tests" / "lifecycle.bpmn");
 
-    const auto& acquire = flux::node(model, "Activity_acquire");
-    const auto& release = flux::node(model, "Activity_release");
+    const auto& acquire_subset = flux::node(model, "Task_acquire_subset");
+    const auto& release_bound = flux::node(model, "Task_release_bound");
+    const auto& release_all_remaining = flux::node(model, "Task_release_all_remaining");
+    const auto& acquire_all = flux::node(model, "Task_acquire_all");
+    const auto& release_all = flux::node(model, "Task_release_all");
 
-    REQUIRE(acquire.task.has_value());
-    REQUIRE(acquire.task->type == flux::TaskType::AcquireResource);
-    REQUIRE(acquire.task->resource_strategy == flux::ResourceStrategy::All);
-    REQUIRE(model.task_resources.at("Activity_acquire").size() == 1);
-    REQUIRE(model.task_resources.at("Activity_acquire").front() == "DataStoreReference_resource");
+    REQUIRE(acquire_subset.task.has_value());
+    REQUIRE(acquire_subset.task->type == flux::TaskType::AcquireResource);
+    REQUIRE(acquire_subset.task->resource_strategy == flux::ResourceStrategy::All);
+    REQUIRE(model.task_resources.at("Task_acquire_subset").size() == 2);
+    REQUIRE(model.task_resources.at("Task_acquire_subset").front() == "DataStoreReference_driver");
+    REQUIRE(model.task_resources.at("Task_acquire_subset").back() == "DataStoreReference_forklift");
 
-    REQUIRE(release.task.has_value());
-    REQUIRE(release.task->type == flux::TaskType::ReleaseResource);
-    REQUIRE(!release.task->resource_strategy.has_value());
-    REQUIRE(model.task_resources.at("Activity_release").size() == 1);
-    REQUIRE(model.task_resources.at("Activity_release").front() == "DataStoreReference_resource");
+    REQUIRE(release_bound.task.has_value());
+    REQUIRE(release_bound.task->type == flux::TaskType::ReleaseResource);
+    REQUIRE(!release_bound.task->resource_strategy.has_value());
+    REQUIRE(model.task_resources.at("Task_release_bound").size() == 1);
+    REQUIRE(model.task_resources.at("Task_release_bound").front() == "DataStoreReference_forklift");
+
+    REQUIRE(release_all_remaining.task.has_value());
+    REQUIRE(release_all_remaining.task->type == flux::TaskType::ReleaseResource);
+    REQUIRE(!release_all_remaining.task->resource_strategy.has_value());
+    REQUIRE(model.task_resources.find("Task_release_all_remaining") == model.task_resources.end());
+
+    REQUIRE(acquire_all.task.has_value());
+    REQUIRE(acquire_all.task->type == flux::TaskType::AcquireResource);
+    REQUIRE(acquire_all.task->resource_strategy == flux::ResourceStrategy::All);
+    REQUIRE(model.task_resources.at("Task_acquire_all").size() == 2);
+
+    REQUIRE(release_all.task.has_value());
+    REQUIRE(release_all.task->type == flux::TaskType::ReleaseResource);
+    REQUIRE(!release_all.task->resource_strategy.has_value());
+    REQUIRE(model.task_resources.find("Task_release_all") == model.task_resources.end());
 }

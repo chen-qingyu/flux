@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 
 #include <catch2/catch_test_macros.hpp>
@@ -63,20 +64,14 @@ TEST_CASE("FIFO queue starts entities in arrival order", "[runtime][fifo]")
     REQUIRE(result.reports.resource_summary_rows[0].average_wait_time == 3.0);
 }
 
-TEST_CASE("Older infeasible request does not block younger feasible request", "[runtime][same-timestamp]")
+TEST_CASE("Arbitration model covers oldest-feasible waiting rules", "[runtime][same-timestamp]")
 {
-    const auto result = flux::test_support::run_model(std::filesystem::path("data") / "tests" / "same_timestamp_partial_release.bpmn");
+    const auto result = flux::test_support::run_model(std::filesystem::path("data") / "tests" / "arbitration.bpmn");
 
-    REQUIRE(flux::test_support::require_event_time(result, "task_start", "Task_need_r1") == 4.0);
-    REQUIRE(flux::test_support::require_event_time(result, "task_start", "Task_need_all") == 6.0);
-}
-
-TEST_CASE("Oldest feasible request wins when resources free at the same timestamp", "[runtime][same-timestamp]")
-{
-    const auto result = flux::test_support::run_model(std::filesystem::path("data") / "tests" / "same_timestamp_joint_release.bpmn");
-
-    REQUIRE(flux::test_support::require_event_time(result, "task_start", "Task_need_all") == 4.0);
-    REQUIRE(flux::test_support::require_event_time(result, "task_start", "Task_need_r1") == 5.0);
+    REQUIRE(flux::test_support::require_event_time(result, "task_start", "Task_need_partial_p1") == 4.0);
+    REQUIRE(flux::test_support::require_event_time(result, "task_start", "Task_need_partial_all") == 6.0);
+    REQUIRE(flux::test_support::require_event_time(result, "task_start", "Task_need_joint_all") == 4.0);
+    REQUIRE(flux::test_support::require_event_time(result, "task_start", "Task_need_joint_j1") == 5.0);
 }
 
 TEST_CASE("Weighted splitter routes entities across outgoing branches", "[runtime][splitter]")
@@ -129,31 +124,29 @@ TEST_CASE("Transport task accumulates total distance on completion", "[runtime][
     REQUIRE(std::abs(result.total_transport_distance - 61.2) < 1e-9);
 }
 
-TEST_CASE("Release task without bindings releases all held resources", "[runtime][resource-lifecycle]")
+TEST_CASE("Lifecycle model releases bound and remaining held resources correctly", "[runtime][resource-lifecycle]")
 {
-    const auto result = flux::test_support::run_model(std::filesystem::path("data") / "tests" / "release_all_resources_minimal.bpmn");
+    const auto result = flux::test_support::run_model(std::filesystem::path("data") / "tests" / "lifecycle.bpmn");
 
-    REQUIRE(result.reports.resource_timeline_rows.size() == 4);
+    REQUIRE(result.reports.resource_timeline_rows.size() == 8);
     REQUIRE(result.reports.resource_timeline_rows[0].change_type == "allocate");
     REQUIRE(result.reports.resource_timeline_rows[1].change_type == "allocate");
     REQUIRE(result.reports.resource_timeline_rows[2].change_type == "release");
     REQUIRE(result.reports.resource_timeline_rows[3].change_type == "release");
-    REQUIRE(result.reports.resource_timeline_rows[2].task_id == "Task_release_all");
-    REQUIRE(result.reports.resource_timeline_rows[3].task_id == "Task_release_all");
-    REQUIRE(result.reports.resource_timeline_rows[2].time == 3.0);
-    REQUIRE(result.reports.resource_timeline_rows[3].time == 3.0);
-}
-
-TEST_CASE("Release task with bindings only releases matching held resources", "[runtime][resource-lifecycle]")
-{
-    const auto result = flux::test_support::run_model(std::filesystem::path("data") / "tests" / "release_bound_subset.bpmn");
-
-    REQUIRE(result.reports.resource_timeline_rows.size() == 3);
-    REQUIRE(result.reports.resource_timeline_rows[0].change_type == "allocate");
-    REQUIRE(result.reports.resource_timeline_rows[1].change_type == "allocate");
-    REQUIRE(result.reports.resource_timeline_rows[2].change_type == "release");
+    REQUIRE(result.reports.resource_timeline_rows[4].change_type == "allocate");
+    REQUIRE(result.reports.resource_timeline_rows[5].change_type == "allocate");
+    REQUIRE(result.reports.resource_timeline_rows[6].change_type == "release");
+    REQUIRE(result.reports.resource_timeline_rows[7].change_type == "release");
     REQUIRE(result.reports.resource_timeline_rows[2].resource_name == "叉车");
     REQUIRE(result.reports.resource_timeline_rows[2].task_id == "Task_release_bound");
+    REQUIRE(result.reports.resource_timeline_rows[2].time == 3.0);
+    REQUIRE(result.reports.resource_timeline_rows[3].resource_name == "司机");
+    REQUIRE(result.reports.resource_timeline_rows[3].task_id == "Task_release_all_remaining");
+    REQUIRE(result.reports.resource_timeline_rows[3].time == 5.0);
+    REQUIRE(result.reports.resource_timeline_rows[6].task_id == "Task_release_all");
+    REQUIRE(result.reports.resource_timeline_rows[7].task_id == "Task_release_all");
+    REQUIRE(result.reports.resource_timeline_rows[6].time == 13.0);
+    REQUIRE(result.reports.resource_timeline_rows[7].time == 13.0);
 
     const auto forklift_summary = std::find_if(result.reports.resource_summary_rows.begin(), result.reports.resource_summary_rows.end(), [](const auto& row)
                                                { return row.resource_name == "叉车"; });
@@ -162,8 +155,27 @@ TEST_CASE("Release task with bindings only releases matching held resources", "[
 
     REQUIRE(forklift_summary != result.reports.resource_summary_rows.end());
     REQUIRE(driver_summary != result.reports.resource_summary_rows.end());
-    REQUIRE(forklift_summary->allocation_count == 1);
-    REQUIRE(driver_summary->allocation_count == 1);
-    REQUIRE(forklift_summary->busy_time == 3.0);
-    REQUIRE(driver_summary->busy_time == 3.0);
+    REQUIRE(forklift_summary->allocation_count == 2);
+    REQUIRE(driver_summary->allocation_count == 2);
+    REQUIRE(forklift_summary->busy_time == 6.0);
+    REQUIRE(driver_summary->busy_time == 8.0);
 }
+
+#ifdef NDEBUG
+TEST_CASE("Multisrc runtime stays under three seconds", "[runtime][perf]")
+{
+    constexpr double threshold_seconds = 3.0;
+
+    const auto model = flux::test_support::parse_model(std::filesystem::path("data") / "tests" / "multisrc.bpmn");
+
+    flux::Engine engine;
+    const auto started_at = std::chrono::steady_clock::now();
+    const auto result = engine.run(model, 42);
+    const auto finished_at = std::chrono::steady_clock::now();
+    const auto elapsed = std::chrono::duration<double>(finished_at - started_at).count();
+
+    REQUIRE(result.generated_entities == 10000);
+    REQUIRE(result.completed_entities == 10000);
+    REQUIRE(elapsed < threshold_seconds);
+}
+#endif

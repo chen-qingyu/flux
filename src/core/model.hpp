@@ -36,6 +36,8 @@ enum class TaskType
 {
     Delay,
     Transport,
+    AcquireResource,
+    ReleaseResource,
 };
 
 enum class GatewayCriteria

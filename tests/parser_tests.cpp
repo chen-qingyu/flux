@@ -67,3 +67,23 @@ TEST_CASE("Parser reads transport task model", "[parser][transport]")
     REQUIRE(task.task->duration_distribution.type == flux::DistributionType::Static);
     REQUIRE(task.task->duration_distribution.first == 2.0);
 }
+
+TEST_CASE("Parser reads acquire and release resource tasks", "[parser][resource-lifecycle]")
+{
+    const auto model = flux::test_support::parse_model(std::filesystem::path("data") / "tests" / "resource_binding.bpmn");
+
+    const auto& acquire = flux::node(model, "Activity_acquire");
+    const auto& release = flux::node(model, "Activity_release");
+
+    REQUIRE(acquire.task.has_value());
+    REQUIRE(acquire.task->type == flux::TaskType::AcquireResource);
+    REQUIRE(acquire.task->resource_strategy == flux::ResourceStrategy::All);
+    REQUIRE(model.task_resources.at("Activity_acquire").size() == 1);
+    REQUIRE(model.task_resources.at("Activity_acquire").front() == "DataStoreReference_resource");
+
+    REQUIRE(release.task.has_value());
+    REQUIRE(release.task->type == flux::TaskType::ReleaseResource);
+    REQUIRE(!release.task->resource_strategy.has_value());
+    REQUIRE(model.task_resources.at("Activity_release").size() == 1);
+    REQUIRE(model.task_resources.at("Activity_release").front() == "DataStoreReference_resource");
+}

@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+    xmlns:camunda="http://camunda.org/schema/1.0/bpmn"
+    xmlns:iscsim="http://iscsim.org/schema" id="Definitions_Release_Bound_Subset" targetNamespace="http://bpmn.io/schema/bpmn">
+    <bpmn:process id="Process_release_bound_subset" name="释放绑定子集流程" isExecutable="true">
+        <bpmn:startEvent id="Event_start" name="子集释放发生器">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_initiatorType" value="random" />
+                    <camunda:property name="_distributionType" value="static" />
+                    <camunda:property name="_entityCount" value="1" />
+                    <camunda:property name="_entityType" value="job" />
+                    <camunda:property name="_staticInterval" value="1" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:outgoing>Flow_start_to_acquire</bpmn:outgoing>
+        </bpmn:startEvent>
+        <iscsim:acquireResourceTask id="Task_acquire" name="获取两种资源">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_taskType" value="acquireResource" />
+                    <camunda:property name="_resourceStrategy" value="all" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:incoming>Flow_start_to_acquire</bpmn:incoming>
+            <bpmn:outgoing>Flow_acquire_to_delay</bpmn:outgoing>
+        </iscsim:acquireResourceTask>
+        <bpmn:task id="Task_delay" name="占用中">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_taskType" value="delay" />
+                    <camunda:property name="_distributionType" value="static" />
+                    <camunda:property name="_staticInterval" value="3" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:incoming>Flow_acquire_to_delay</bpmn:incoming>
+            <bpmn:outgoing>Flow_delay_to_release</bpmn:outgoing>
+        </bpmn:task>
+        <iscsim:releaseResourceTask id="Task_release_bound" name="只释放叉车">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_taskType" value="releaseResource" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:incoming>Flow_delay_to_release</bpmn:incoming>
+            <bpmn:outgoing>Flow_release_to_end</bpmn:outgoing>
+        </iscsim:releaseResourceTask>
+        <bpmn:dataStoreReference id="DataStoreReference_forklift" name="叉车">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_resourceType" value="resource" />
+                    <camunda:property name="_capacity" value="1" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+        </bpmn:dataStoreReference>
+        <bpmn:dataStoreReference id="DataStoreReference_driver" name="司机">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_resourceType" value="resource" />
+                    <camunda:property name="_capacity" value="1" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+        </bpmn:dataStoreReference>
+        <bpmn:endEvent id="Event_end" name="结束">
+            <bpmn:incoming>Flow_release_to_end</bpmn:incoming>
+        </bpmn:endEvent>
+        <bpmn:sequenceFlow id="Flow_start_to_acquire" sourceRef="Event_start" targetRef="Task_acquire" />
+        <bpmn:sequenceFlow id="Flow_acquire_to_delay" sourceRef="Task_acquire" targetRef="Task_delay" />
+        <bpmn:sequenceFlow id="Flow_delay_to_release" sourceRef="Task_delay" targetRef="Task_release_bound" />
+        <bpmn:sequenceFlow id="Flow_release_to_end" sourceRef="Task_release_bound" targetRef="Event_end" />
+        <bpmn:association id="Association_acquire_forklift" associationDirection="Both" sourceRef="Task_acquire" targetRef="DataStoreReference_forklift" />
+        <bpmn:association id="Association_acquire_driver" associationDirection="Both" sourceRef="Task_acquire" targetRef="DataStoreReference_driver" />
+        <bpmn:association id="Association_release_forklift" associationDirection="Both" sourceRef="Task_release_bound" targetRef="DataStoreReference_forklift" />
+    </bpmn:process>
+</bpmn:definitions>

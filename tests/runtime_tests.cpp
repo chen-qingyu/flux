@@ -128,3 +128,42 @@ TEST_CASE("Transport task accumulates total distance on completion", "[runtime][
     REQUIRE(result.completed_entities == 3);
     REQUIRE(std::abs(result.total_transport_distance - 61.2) < 1e-9);
 }
+
+TEST_CASE("Release task without bindings releases all held resources", "[runtime][resource-lifecycle]")
+{
+    const auto result = flux::test_support::run_model(std::filesystem::path("data") / "tests" / "release_all_resources_minimal.bpmn");
+
+    REQUIRE(result.reports.resource_timeline_rows.size() == 4);
+    REQUIRE(result.reports.resource_timeline_rows[0].change_type == "allocate");
+    REQUIRE(result.reports.resource_timeline_rows[1].change_type == "allocate");
+    REQUIRE(result.reports.resource_timeline_rows[2].change_type == "release");
+    REQUIRE(result.reports.resource_timeline_rows[3].change_type == "release");
+    REQUIRE(result.reports.resource_timeline_rows[2].task_id == "Task_release_all");
+    REQUIRE(result.reports.resource_timeline_rows[3].task_id == "Task_release_all");
+    REQUIRE(result.reports.resource_timeline_rows[2].time == 3.0);
+    REQUIRE(result.reports.resource_timeline_rows[3].time == 3.0);
+}
+
+TEST_CASE("Release task with bindings only releases matching held resources", "[runtime][resource-lifecycle]")
+{
+    const auto result = flux::test_support::run_model(std::filesystem::path("data") / "tests" / "release_bound_subset.bpmn");
+
+    REQUIRE(result.reports.resource_timeline_rows.size() == 3);
+    REQUIRE(result.reports.resource_timeline_rows[0].change_type == "allocate");
+    REQUIRE(result.reports.resource_timeline_rows[1].change_type == "allocate");
+    REQUIRE(result.reports.resource_timeline_rows[2].change_type == "release");
+    REQUIRE(result.reports.resource_timeline_rows[2].resource_name == "叉车");
+    REQUIRE(result.reports.resource_timeline_rows[2].task_id == "Task_release_bound");
+
+    const auto forklift_summary = std::find_if(result.reports.resource_summary_rows.begin(), result.reports.resource_summary_rows.end(), [](const auto& row)
+                                               { return row.resource_name == "叉车"; });
+    const auto driver_summary = std::find_if(result.reports.resource_summary_rows.begin(), result.reports.resource_summary_rows.end(), [](const auto& row)
+                                             { return row.resource_name == "司机"; });
+
+    REQUIRE(forklift_summary != result.reports.resource_summary_rows.end());
+    REQUIRE(driver_summary != result.reports.resource_summary_rows.end());
+    REQUIRE(forklift_summary->allocation_count == 1);
+    REQUIRE(driver_summary->allocation_count == 1);
+    REQUIRE(forklift_summary->busy_time == 3.0);
+    REQUIRE(driver_summary->busy_time == 3.0);
+}

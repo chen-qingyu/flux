@@ -16,17 +16,20 @@ BPMN File -> Parser -> Model (ECS Graph) -> Engine (DOD + EnTT) -> Reporter -> O
 
 - `startEvent`
 - `task`
+- `iscsim:acquireResourceTask`
+- `iscsim:releaseResourceTask`
 - `endEvent`
 - `exclusiveGateway`
 - `parallelGateway`
 - `dataStoreReference`
 - `sequenceFlow`
-- `association`/`dataOutputAssociation`
+- `association`/`dataInputAssociation`/`dataOutputAssociation`
 
 支持的能力：
 
 - 固定随机种子，结果可复现
 - 资源策略：`All`、`Any`
+- 显式资源生命周期：`acquireResource`、`releaseResource`
 - 网关语义：`XOR`、`AND`
 - 输出报表，包括实体事件日志、资源占用时间线、资源利用率等信息
 - 时间是无量纲时间，单位可由用户定义
@@ -100,13 +103,21 @@ python run.py data/demo.bpmn --seed 42
 
 ### 任务
 
-任务至少要提供 `_taskType`，当前支持 `delay` 和 `transport`。
+任务至少要提供 `_taskType`，当前支持 `delay`、`transport`、`acquireResource` 和 `releaseResource`。
 
-如果任务需要耗时，必须提供 `_distributionType`。
+当 `_taskType=delay|transport` 时，任务需要耗时，因此必须提供 `_distributionType`。
 
 当 `_taskType=transport` 时，还必须提供 `_distance`，表示该次运输任务完成后累计到引擎结果中的运输距离。
 
-如果任务只关联一种资源，可以省略 `_resourceStrategy`；如果任务关联了多种资源，则必须提供 `_resourceStrategy=all|any`。资源需要通过 `association`，或在 `task` 内通过 `dataOutputAssociation`，把任务连到 `dataStoreReference`。
+当 `_taskType=acquireResource` 时，任务会瞬时完成，但会先申请并持有绑定资源，直到后续显式释放。该任务至少要绑定一种资源；如果绑定了多种资源，则必须提供 `_resourceStrategy=all|any`。
+
+当 `_taskType=releaseResource` 时，任务也会瞬时完成，并且不支持 `_resourceStrategy`。如果该任务绑定了资源，则只释放当前实体持有且与绑定列表相交的资源；如果没有绑定资源，则释放当前实体持有的全部资源。
+
+普通 `delay` / `transport` 任务如果只关联一种资源，可以省略 `_resourceStrategy`；如果任务关联了多种资源，则必须提供 `_resourceStrategy=all|any`。
+
+资源绑定可以通过 `association`，也可以通过 `dataInputAssociation` / `dataOutputAssociation` 把任务连到 `dataStoreReference`。
+
+如果实体到达 `endEvent` 时仍持有资源，则这些资源不会自动释放，而是保持占用直到仿真结束。
 
 ### 资源
 

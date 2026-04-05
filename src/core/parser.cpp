@@ -337,14 +337,29 @@ private:
                 throw std::runtime_error(context + " property '_distance' must be non-negative.");
             }
         }
+        else if (task_type == "acquireresource")
+        {
+            task.type = TaskType::AcquireResource;
+        }
+        else if (task_type == "releaseresource")
+        {
+            task.type = TaskType::ReleaseResource;
+        }
         else
         {
-            throw std::runtime_error(context + " uses unsupported _taskType '" + task_type + "'. Only 'delay' and 'transport' are supported.");
+            throw std::runtime_error(context + " uses unsupported _taskType '" + task_type + "'. Only 'delay', 'transport', 'acquireResource', and 'releaseResource' are supported.");
         }
 
-        task.duration_distribution = read_distribution(properties, "_distributionType", context);
+        if (task.type == TaskType::Delay || task.type == TaskType::Transport)
+        {
+            task.duration_distribution = read_distribution(properties, "_distributionType", context);
+        }
         if (properties.contains("_resourceStrategy"))
         {
+            if (task.type == TaskType::ReleaseResource)
+            {
+                throw std::runtime_error(context + " must not define '_resourceStrategy'.");
+            }
             task.resource_strategy = read_required_enum<ResourceStrategy>(properties, "_resourceStrategy", context);
         }
 
@@ -409,6 +424,16 @@ private:
             parse_task(child);
             return;
         }
+        if (type_name == "acquireResourceTask")
+        {
+            parse_task(child);
+            return;
+        }
+        if (type_name == "releaseResourceTask")
+        {
+            parse_task(child);
+            return;
+        }
         if (type_name == "transportTask")
         {
             parse_task(child);
@@ -440,6 +465,11 @@ private:
             return;
         }
         if (type_name == "association")
+        {
+            parse_association(child);
+            return;
+        }
+        if (type_name == "dataInputAssociation" || type_name == "dataOutputAssociation")
         {
             parse_association(child);
         }
@@ -668,7 +698,6 @@ private:
                     {
                         throw std::runtime_error("Task '" + node_id + "' must have outgoing sequence flow.");
                     }
-                    validate_distribution(definition.task->duration_distribution, "Task '" + node_id + "'");
                     {
                         std::size_t resource_count = 0;
                         if (const auto resources = model_.task_resources.find(node_id); resources != model_.task_resources.end())
@@ -676,10 +705,31 @@ private:
                             resource_count = resources->second.size();
                         }
 
-                        if (resource_count > 1 && !definition.task->resource_strategy.has_value())
+                        if ((definition.task->type == TaskType::Delay || definition.task->type == TaskType::Transport) && resource_count > 1 && !definition.task->resource_strategy.has_value())
                         {
                             throw std::runtime_error("Task '" + node_id + "' must provide '_resourceStrategy' when multiple resources are associated.");
                         }
+
+                        if (definition.task->type == TaskType::AcquireResource)
+                        {
+                            if (resource_count == 0)
+                            {
+                                throw std::runtime_error("Task '" + node_id + "' must bind at least one resource when '_taskType=acquireResource'.");
+                            }
+                            if (resource_count > 1 && !definition.task->resource_strategy.has_value())
+                            {
+                                throw std::runtime_error("Task '" + node_id + "' must provide '_resourceStrategy' when multiple resources are associated.");
+                            }
+                        }
+
+                        if (definition.task->type == TaskType::ReleaseResource && definition.task->resource_strategy.has_value())
+                        {
+                            throw std::runtime_error("Task '" + node_id + "' must not define '_resourceStrategy'.");
+                        }
+                    }
+                    if (definition.task->type == TaskType::Delay || definition.task->type == TaskType::Transport)
+                    {
+                        validate_distribution(definition.task->duration_distribution, "Task '" + node_id + "'");
                     }
                     break;
                 case NodeType::EndEvent:

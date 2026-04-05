@@ -1,0 +1,2 @@
+resource_id,resource_name,capacity,busy_time,idle_time,utilization,max_queue_length,average_wait_time,allocation_count,simulation_horizon
+DataStoreReference_resource,普通资源,1,30.000,0.000,1.000,1,0.000,3,30.000

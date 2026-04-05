@@ -45,6 +45,11 @@ struct ActiveTask
     std::vector<std::string> allocated_resources;
 };
 
+struct HeldResources
+{
+    std::vector<std::string> resource_ids;
+};
+
 struct ResourceRuntime
 {
     std::string resource_id;
@@ -229,6 +234,22 @@ public:
     [[nodiscard]] bool token_valid(entt::entity token) const
     {
         return token != entt::null && registry_.valid(token) && registry_.all_of<ProcessToken>(token);
+    }
+
+    [[nodiscard]] bool token_has_held_resources(entt::entity token_entity) const
+    {
+        return registry_.all_of<HeldResources>(token_entity) && !registry_.get<HeldResources>(token_entity).resource_ids.empty();
+    }
+
+    [[nodiscard]] const std::vector<std::string>& held_resources(entt::entity token_entity) const
+    {
+        if (registry_.all_of<HeldResources>(token_entity))
+        {
+            return registry_.get<HeldResources>(token_entity).resource_ids;
+        }
+
+        static const std::vector<std::string> empty;
+        return empty;
     }
 
     [[nodiscard]] const ProcessToken& token(entt::entity entity) const
@@ -485,7 +506,10 @@ public:
     void start_task(entt::entity token_entity, const NodeDefinition& node, double time, const std::vector<std::string>& allocation, double wait_time)
     {
         auto& token_component = token(token_entity);
-        apply_allocation(allocation, time, wait_time, token_component.entity_id, node.id);
+        if (node.task->type != TaskType::ReleaseResource)
+        {
+            apply_allocation(allocation, time, wait_time, token_component.entity_id, node.id);
+        }
         registry_.emplace_or_replace<ActiveTask>(token_entity, ActiveTask{node.id, allocation});
 
         const auto duration = sample(node.task->duration_distribution);
@@ -519,6 +543,67 @@ public:
                 runtime.allocation_count,
                 horizon_s,
             });
+        }
+    }
+
+    void add_held_resources(entt::entity token_entity, const std::vector<std::string>& resource_ids)
+    {
+        if (resource_ids.empty())
+        {
+            return;
+        }
+
+        auto& held = registry_.get_or_emplace<HeldResources>(token_entity);
+        held.resource_ids.insert(held.resource_ids.end(), resource_ids.begin(), resource_ids.end());
+        std::sort(held.resource_ids.begin(), held.resource_ids.end());
+    }
+
+    [[nodiscard]] std::vector<std::string> release_resources_for_task(entt::entity token_entity, const std::string& task_id) const
+    {
+        const auto& currently_held = held_resources(token_entity);
+        if (currently_held.empty())
+        {
+            return {};
+        }
+
+        const auto& bound_resources = task_resources(task_id);
+        if (bound_resources.empty())
+        {
+            return currently_held;
+        }
+
+        std::vector<std::string> released;
+        released.reserve(currently_held.size());
+        for (const auto& resource_id : currently_held)
+        {
+            if (std::binary_search(bound_resources.begin(), bound_resources.end(), resource_id))
+            {
+                released.push_back(resource_id);
+            }
+        }
+        return released;
+    }
+
+    void remove_held_resources(entt::entity token_entity, const std::vector<std::string>& resource_ids)
+    {
+        if (resource_ids.empty() || !registry_.all_of<HeldResources>(token_entity))
+        {
+            return;
+        }
+
+        auto& held = registry_.get<HeldResources>(token_entity).resource_ids;
+        for (const auto& resource_id : resource_ids)
+        {
+            const auto found = std::find(held.begin(), held.end(), resource_id);
+            if (found != held.end())
+            {
+                held.erase(found);
+            }
+        }
+
+        if (held.empty())
+        {
+            registry_.remove<HeldResources>(token_entity);
         }
     }
 
@@ -866,6 +951,12 @@ void Engine::handle_arrive_node(RunState& state, const ScheduledEvent& event) co
         const auto& requested_resources = state.task_resources(node.id);
         state.log_event(event.time, token_component, node, "task_arrive");
 
+        if (node.task->type == TaskType::ReleaseResource)
+        {
+            state.start_task(event.token, node, event.time, state.release_resources_for_task(event.token, node.id), 0.0);
+            return;
+        }
+
         if (requested_resources.empty())
         {
             state.start_task(event.token, node, event.time, {}, 0.0);
@@ -919,7 +1010,19 @@ void Engine::handle_finish_task(RunState& state, const ScheduledEvent& event) co
     const auto& node = flux::node(state.model(), event.node_id);
     const auto token_component = state.token(event.token);
     const auto active_task = state.registry().get<ActiveTask>(event.token);
-    state.apply_release(active_task.allocated_resources, event.time, token_component.entity_id, node.id);
+    if (node.task->type == TaskType::Delay || node.task->type == TaskType::Transport)
+    {
+        state.apply_release(active_task.allocated_resources, event.time, token_component.entity_id, node.id);
+    }
+    else if (node.task->type == TaskType::AcquireResource)
+    {
+        state.add_held_resources(event.token, active_task.allocated_resources);
+    }
+    else if (node.task->type == TaskType::ReleaseResource)
+    {
+        state.apply_release(active_task.allocated_resources, event.time, token_component.entity_id, node.id);
+        state.remove_held_resources(event.token, active_task.allocated_resources);
+    }
     if (node.task->type == TaskType::Transport)
     {
         state.add_transport_distance(node.task->distance);
@@ -984,6 +1087,11 @@ void Engine::handle_parallel_gateway(RunState& state, const ScheduledEvent& even
     }
 
     const auto& node = flux::node(state.model(), event.node_id);
+    if (state.token_has_held_resources(event.token))
+    {
+        throw std::runtime_error("Parallel gateway '" + node.id + "' does not support tokens that are holding resources.");
+    }
+
     const auto token_component = state.token(event.token);
     const auto incoming_count = state.model().incoming.contains(node.id) ? state.model().incoming.at(node.id).size() : 0U;
     const auto outgoing_count = state.model().outgoing.contains(node.id) ? state.model().outgoing.at(node.id).size() : 0U;

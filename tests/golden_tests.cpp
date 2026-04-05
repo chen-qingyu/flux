@@ -31,3 +31,8 @@ TEST_CASE("Joint-release oldest-feasible golden CSV stays stable", "[golden][sam
 {
     flux::test_support::require_report_matches(std::filesystem::path("data") / "tests" / "same_timestamp_joint_release.bpmn", "same_timestamp_joint_release");
 }
+
+TEST_CASE("Resource binding golden CSV stays stable", "[golden][resource-lifecycle]")
+{
+    flux::test_support::require_report_matches(std::filesystem::path("data") / "tests" / "resource_binding.bpmn", "resource_binding");
+}

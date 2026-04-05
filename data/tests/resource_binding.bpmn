@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+    xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+    xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+    xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+    xmlns:camunda="http://camunda.org/schema/1.0/bpmn"
+    xmlns:iscsim="http://iscsim.org/schema" id="Definitions_Process_resource" targetNamespace="http://bpmn.io/schema/bpmn">
+    <bpmn:process id="Process_resource" name="业务流程_resource" isExecutable="true">
+        <bpmn:startEvent id="Event_start" name="发生器">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_initiatorType" value="random" />
+                    <camunda:property name="_distributionType" value="static" />
+                    <camunda:property name="_staticInterval" value="10" />
+                    <camunda:property name="_entityCount" value="3" />
+                    <camunda:property name="_entityType" value="entity" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:outgoing>Flow_0n075bv</bpmn:outgoing>
+        </bpmn:startEvent>
+        <iscsim:acquireResourceTask id="Activity_acquire" name="获取资源">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_taskType" value="acquireResource" />
+                    <camunda:property name="_resourceStrategy" value="all" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:incoming>Flow_0n075bv</bpmn:incoming>
+            <bpmn:outgoing>Flow_0bixleb</bpmn:outgoing>
+        </iscsim:acquireResourceTask>
+        <bpmn:dataStoreReference id="DataStoreReference_resource" name="普通资源">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_resourceType" value="resource" />
+                    <camunda:property name="_capacity" value="1" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+        </bpmn:dataStoreReference>
+        <bpmn:task id="Activity_delay" name="延时活动">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_taskType" value="delay" />
+                    <camunda:property name="_distributionType" value="static" />
+                    <camunda:property name="_staticInterval" value="10" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:incoming>Flow_0bixleb</bpmn:incoming>
+            <bpmn:outgoing>Flow_09rd15j</bpmn:outgoing>
+        </bpmn:task>
+        <iscsim:releaseResourceTask id="Activity_release" name="释放资源">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_taskType" value="releaseResource" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:incoming>Flow_09rd15j</bpmn:incoming>
+            <bpmn:outgoing>Flow_073ob67</bpmn:outgoing>
+        </iscsim:releaseResourceTask>
+        <bpmn:endEvent id="Event_end" name="终点">
+            <bpmn:incoming>Flow_073ob67</bpmn:incoming>
+        </bpmn:endEvent>
+        <bpmn:sequenceFlow id="Flow_0n075bv" sourceRef="Event_start" targetRef="Activity_acquire" />
+        <bpmn:sequenceFlow id="Flow_0bixleb" sourceRef="Activity_acquire" targetRef="Activity_delay" />
+        <bpmn:sequenceFlow id="Flow_09rd15j" sourceRef="Activity_delay" targetRef="Activity_release" />
+        <bpmn:sequenceFlow id="Flow_073ob67" sourceRef="Activity_release" targetRef="Event_end" />
+        <iscsim:dataInputAssociation id="DataInputAssociation_19aglsw" sourceRef="Activity_acquire" targetRef="DataStoreReference_resource" />
+        <iscsim:dataOutputAssociation id="DataOutputAssociation_1xeb04g" sourceRef="Activity_release" targetRef="DataStoreReference_resource" />
+    </bpmn:process>
+</bpmn:definitions>

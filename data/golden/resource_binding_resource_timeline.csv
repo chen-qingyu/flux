@@ -1,0 +1,7 @@
+time,resource_id,resource_name,change_type,in_use,available,queue_length,entity_id,task_id
+0.000,DataStoreReference_resource,普通资源,allocate,1,0,0,发生器_entity_0,Activity_acquire
+10.000,DataStoreReference_resource,普通资源,release,0,1,1,发生器_entity_0,Activity_release
+10.000,DataStoreReference_resource,普通资源,allocate,1,0,0,发生器_entity_1,Activity_acquire
+20.000,DataStoreReference_resource,普通资源,release,0,1,1,发生器_entity_1,Activity_release
+20.000,DataStoreReference_resource,普通资源,allocate,1,0,0,发生器_entity_2,Activity_acquire
+30.000,DataStoreReference_resource,普通资源,release,0,1,0,发生器_entity_2,Activity_release

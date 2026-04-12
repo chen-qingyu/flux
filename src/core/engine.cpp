@@ -372,6 +372,7 @@ public:
 
         if (!strategy.has_value())
         {
+            // 单资源场景允许省略策略，多资源场景必须在解析阶段显式声明。
             if (resource_ids.size() != 1)
             {
                 return {};
@@ -491,6 +492,7 @@ public:
 
         pending_resolution_needed_ = false;
 
+        // 同一时间点的事件先全部消费，再统一尝试唤醒等待任务，保证“同一时刻按最老可行请求优先”。
         while (true)
         {
             auto candidate = next_pending_candidate();
@@ -555,6 +557,7 @@ public:
 
         auto& held = registry_.get_or_emplace<HeldResources>(token_entity);
         held.resource_ids.insert(held.resource_ids.end(), resource_ids.begin(), resource_ids.end());
+        // 保持排序，后续 release 直接用二分判断绑定资源是否被持有。
         std::sort(held.resource_ids.begin(), held.resource_ids.end());
     }
 
@@ -651,6 +654,7 @@ private:
 
             for (const auto& resource_id : resource_ids)
             {
+                // 多资源任务需要在任一相关资源释放时重新入候选堆。
                 task_queue_ids_by_resource_[resource_id].push_back(task_id);
             }
         }
@@ -691,6 +695,7 @@ private:
         const auto& resource_ids = task_resources(task_id);
         if (resource_ids.size() == 1)
         {
+            // 单资源等待队列直接挂在资源上，多资源等待队列挂在任务自身上。
             return resource_queue_key(resource_ids.front());
         }
 
@@ -719,6 +724,7 @@ private:
         {
             const auto candidate = pending_candidates_.top();
 
+            // 候选堆允许旧条目残留，通过惰性清理避免在 release 路径上全量扫描。
             discard_invalid_fronts(candidate.key);
 
             const auto found = pending_requests_.find(candidate.key);
@@ -870,6 +876,7 @@ Result Engine::run(const Model& model, std::uint64_t seed) const
     while (state.has_events())
     {
         const auto batch_time = state.next_event_time();
+        // 事件队列按 (time, order) 排序，这里按时间批处理来稳定同一时刻的资源仲裁结果。
         do
         {
             const auto event = state.next_event();
@@ -965,6 +972,7 @@ void Engine::handle_arrive_node(RunState& state, const ScheduledEvent& event) co
 
         if (!state.has_pending_requests())
         {
+            // 没有历史等待者时允许直接抢占；一旦存在等待队列，必须走统一仲裁路径。
             const auto allocation = state.allocate_resources_if_possible(node.id, node.task->resource_strategy);
             if (!allocation.empty())
             {

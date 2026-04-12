@@ -45,6 +45,7 @@ enum class GatewayCriteria
     ByWeight,
 };
 
+// 分布参数统一压平成两个数值位，具体含义由 type 决定。
 struct DistributionSpec
 {
     DistributionType type{DistributionType::Static};
@@ -52,6 +53,7 @@ struct DistributionSpec
     double second{0.0};
 };
 
+// 起始事件负责生成业务实体，并决定相邻两次生成之间的间隔。
 struct GeneratorSpec
 {
     DistributionSpec interval_distribution{};
@@ -59,6 +61,7 @@ struct GeneratorSpec
     std::string entity_type;
 };
 
+// 任务配置同时承载执行时间、资源策略和运输距离等可选语义。
 struct TaskSpec
 {
     TaskType type{TaskType::Delay};
@@ -93,6 +96,7 @@ struct ResourceDefinition
     int capacity{0};
 };
 
+// Model 是解析后的只读索引，运行阶段不会再回写 BPMN 结构。
 struct Model
 {
     std::string process_id;

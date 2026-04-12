@@ -581,6 +581,7 @@ private:
 
     void finalize_model()
     {
+        // 顺序不能反：先建索引，再绑定资源，再归一化，最后才能解析权重并做一致性校验。
         build_flow_indexes();
         bind_task_resources();
         normalize_model();
@@ -602,6 +603,7 @@ private:
 
     void bind_task_resources()
     {
+        // BPMN 中任务和资源的关联可能正反书写，这里统一折叠成 task -> resources。
         for (const auto& [left_ref, right_ref] : associations_)
         {
             const auto left_is_task = model_.nodes.contains(left_ref) && flux::node(model_, left_ref).type == NodeType::Task;
@@ -624,6 +626,7 @@ private:
     {
         for (auto& [task_id, resource_ids] : model_.task_resources)
         {
+            // 运行时依赖有序且去重后的资源列表来做稳定仲裁。
             std::sort(resource_ids.begin(), resource_ids.end());
             resource_ids.erase(std::unique(resource_ids.begin(), resource_ids.end()), resource_ids.end());
         }

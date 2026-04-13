@@ -16,6 +16,7 @@ BPMN File -> Parser -> Model (ECS Graph) -> Engine (DOD + EnTT) -> Reporter -> O
 
 - `startEvent`
 - `task`
+- `iscsim:transportTask`
 - `iscsim:acquireResourceTask`
 - `iscsim:releaseResourceTask`
 - `endEvent`

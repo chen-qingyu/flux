@@ -106,3 +106,30 @@ TEST_CASE("Parser reads resource lifecycle model", "[parser][resource-lifecycle]
     REQUIRE(!release_all.task->resource_strategy.has_value());
     REQUIRE(model.task_resources.find("Task_release_all") == model.task_resources.end());
 }
+
+TEST_CASE("Parser reads combine and split ratio task model", "[parser][combine-split]")
+{
+    const auto model = flux::test_support::parse_model(std::filesystem::path("data") / "tests" / "combine_split_minimal.bpmn");
+
+    const auto& combine = flux::node(model, "Activity_combine");
+    const auto& split = flux::node(model, "Activity_split");
+
+    REQUIRE(combine.task.has_value());
+    REQUIRE(combine.task->type == flux::TaskType::Combine);
+    REQUIRE(combine.task->duration_distribution.type == flux::DistributionType::Static);
+    REQUIRE(combine.task->duration_distribution.first == 10.0);
+    REQUIRE(combine.task->combine.has_value());
+    REQUIRE(combine.task->combine->method == flux::CombineMethod::Ratio);
+    REQUIRE(combine.task->combine->ratio == 4);
+    REQUIRE(combine.task->combine->entity_type == "truck");
+
+    REQUIRE(split.task.has_value());
+    REQUIRE(split.task->type == flux::TaskType::Split);
+    REQUIRE(split.task->duration_distribution.type == flux::DistributionType::Static);
+    REQUIRE(split.task->duration_distribution.first == 10.0);
+    REQUIRE(split.task->split.has_value());
+    REQUIRE(split.task->split->method == flux::SplitMethod::Ratio);
+    REQUIRE(split.task->split->ratio == 2);
+    REQUIRE(split.task->split->entity_type == "box");
+    REQUIRE(split.task->split->one_off == false);
+}

@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <deque>
 #include <functional>
+#include <memory>
 #include <queue>
 #include <random>
 #include <stdexcept>
@@ -48,6 +49,29 @@ struct ActiveTask
 struct HeldResources
 {
     std::vector<std::string> resource_ids;
+};
+
+struct CombineHistory;
+
+struct RestorableTokenSnapshot
+{
+    ProcessToken token;
+    std::shared_ptr<CombineHistory> history;
+};
+
+struct CombinedFrame
+{
+    std::vector<RestorableTokenSnapshot> members;
+};
+
+struct CombineHistory
+{
+    std::vector<CombinedFrame> frames;
+};
+
+struct CombineBatch
+{
+    std::vector<entt::entity> members;
 };
 
 struct ResourceRuntime
@@ -241,6 +265,11 @@ public:
         return registry_.all_of<HeldResources>(token_entity) && !registry_.get<HeldResources>(token_entity).resource_ids.empty();
     }
 
+    [[nodiscard]] bool token_has_combine_history(entt::entity token_entity) const
+    {
+        return registry_.all_of<CombineHistory>(token_entity) && !registry_.get<CombineHistory>(token_entity).frames.empty();
+    }
+
     [[nodiscard]] const std::vector<std::string>& held_resources(entt::entity token_entity) const
     {
         if (registry_.all_of<HeldResources>(token_entity))
@@ -260,6 +289,140 @@ public:
     ProcessToken& token(entt::entity entity)
     {
         return registry_.get<ProcessToken>(entity);
+    }
+
+    [[nodiscard]] const CombineHistory& combine_history(entt::entity token_entity) const
+    {
+        return registry_.get<CombineHistory>(token_entity);
+    }
+
+    [[nodiscard]] std::shared_ptr<CombineHistory> snapshot_combine_history(entt::entity token_entity) const
+    {
+        if (!registry_.all_of<CombineHistory>(token_entity))
+        {
+            return nullptr;
+        }
+
+        return std::make_shared<CombineHistory>(registry_.get<CombineHistory>(token_entity));
+    }
+
+    [[nodiscard]] RestorableTokenSnapshot snapshot_token(entt::entity token_entity) const
+    {
+        return RestorableTokenSnapshot{token(token_entity), snapshot_combine_history(token_entity)};
+    }
+
+    void copy_combine_history(entt::entity source_token, entt::entity target_token)
+    {
+        if (!registry_.all_of<CombineHistory>(source_token))
+        {
+            if (registry_.all_of<CombineHistory>(target_token))
+            {
+                registry_.remove<CombineHistory>(target_token);
+            }
+            return;
+        }
+
+        registry_.emplace_or_replace<CombineHistory>(target_token, registry_.get<CombineHistory>(source_token));
+    }
+
+    void restore_snapshot_history(entt::entity token_entity, const std::shared_ptr<CombineHistory>& history)
+    {
+        if (!history)
+        {
+            if (registry_.all_of<CombineHistory>(token_entity))
+            {
+                registry_.remove<CombineHistory>(token_entity);
+            }
+            return;
+        }
+
+        registry_.emplace_or_replace<CombineHistory>(token_entity, *history);
+    }
+
+    [[nodiscard]] entt::entity create_restored_token(const RestorableTokenSnapshot& snapshot)
+    {
+        const auto restored = create_token(
+            snapshot.token.entity_id,
+            snapshot.token.entity_type,
+            snapshot.token.token_id,
+            snapshot.token.created_at);
+        restore_snapshot_history(restored, snapshot.history);
+        return restored;
+    }
+
+    void set_combine_history(entt::entity token_entity, std::vector<RestorableTokenSnapshot> members)
+    {
+        registry_.emplace_or_replace<CombineHistory>(token_entity, CombineHistory{{CombinedFrame{std::move(members)}}});
+    }
+
+    void schedule_token_to_outgoing(const std::string& node_id, entt::entity token_entity, double time)
+    {
+        const auto found = model_.outgoing.find(node_id);
+        if (found == model_.outgoing.end())
+        {
+            return;
+        }
+
+        for (const auto& target_id : found->second)
+        {
+            schedule(ScheduledEvent{time, next_order(), ScheduledEventType::ArriveNode, target_id, token_entity});
+        }
+    }
+
+    void schedule_split_outputs(entt::entity token_entity, const NodeDefinition& node, double start_time, double duration)
+    {
+        if (node.task->type != TaskType::Split)
+        {
+            return;
+        }
+
+        std::vector<entt::entity> outputs;
+        if (node.task->split->method == SplitMethod::Ratio)
+        {
+            outputs.reserve(node.task->split->ratio);
+            for (std::size_t index = 0; index < node.task->split->ratio; ++index)
+            {
+                const auto entity_id = next_entity_id(node.name, node.task->split->entity_type);
+                const auto child = create_token(entity_id, node.task->split->entity_type, entity_id + ".t0", start_time);
+                copy_combine_history(token_entity, child);
+                outputs.push_back(child);
+            }
+        }
+        else
+        {
+            if (!token_has_combine_history(token_entity))
+            {
+                throw std::runtime_error("Task '" + node.id + "' requires a previously combined entity when '_method=restore'.");
+            }
+
+            const auto& history = combine_history(token_entity);
+            const auto& frame = history.frames.back();
+            outputs.reserve(frame.members.size());
+            for (const auto& snapshot : frame.members)
+            {
+                outputs.push_back(create_restored_token(snapshot));
+            }
+        }
+
+        if (outputs.empty())
+        {
+            return;
+        }
+
+        if (node.task->split->one_off)
+        {
+            for (const auto child : outputs)
+            {
+                schedule_token_to_outgoing(node.id, child, start_time + duration);
+            }
+            return;
+        }
+
+        const auto interval = duration / static_cast<double>(outputs.size());
+        for (std::size_t index = 0; index < outputs.size(); ++index)
+        {
+            schedule_token_to_outgoing(node.id, outputs[index], start_time + interval * static_cast<double>(index + 1));
+        }
     }
 
     void destroy_token(entt::entity entity)
@@ -518,6 +681,10 @@ public:
         log_event(time, token_component, node, "task_start");
 
         schedule(ScheduledEvent{time + duration, next_order(), ScheduledEventType::FinishTask, node.id, token_entity});
+        if (node.task->type == TaskType::Split)
+        {
+            schedule_split_outputs(token_entity, node, time, duration);
+        }
     }
 
     void finalize_resources(double horizon_s)
@@ -608,6 +775,43 @@ public:
         {
             registry_.remove<HeldResources>(token_entity);
         }
+    }
+
+    void enqueue_combine_member(const std::string& task_id, entt::entity token_entity)
+    {
+        combine_waiting_[task_id].push_back(token_entity);
+    }
+
+    [[nodiscard]] std::vector<entt::entity> take_ready_combine_batch(const std::string& task_id, std::size_t ratio)
+    {
+        auto found = combine_waiting_.find(task_id);
+        if (found == combine_waiting_.end())
+        {
+            return {};
+        }
+
+        auto& waiting = found->second;
+        while (!waiting.empty() && !token_valid(waiting.front()))
+        {
+            waiting.pop_front();
+        }
+        if (waiting.size() < ratio)
+        {
+            return {};
+        }
+
+        std::vector<entt::entity> members;
+        members.reserve(ratio);
+        for (std::size_t index = 0; index < ratio; ++index)
+        {
+            members.push_back(waiting.front());
+            waiting.pop_front();
+        }
+        if (waiting.empty())
+        {
+            combine_waiting_.erase(found);
+        }
+        return members;
     }
 
 private:
@@ -857,6 +1061,7 @@ private:
     std::priority_queue<PendingCandidate, std::vector<PendingCandidate>, PendingCandidateCompare> pending_candidates_;
     std::unordered_map<std::string, std::vector<std::string>> task_queue_ids_by_resource_;
     std::unordered_map<std::string, JoinBarrierState> join_barriers_;
+    std::unordered_map<std::string, std::deque<entt::entity>> combine_waiting_;
     std::unordered_map<std::string, entt::entity> resource_entities_;
     std::unordered_map<std::string, int> resource_queue_lengths_;
     std::vector<std::string> resource_ids_;
@@ -958,6 +1163,53 @@ void Engine::handle_arrive_node(RunState& state, const ScheduledEvent& event) co
         const auto& requested_resources = state.task_resources(node.id);
         state.log_event(event.time, token_component, node, "task_arrive");
 
+        if ((node.task->type == TaskType::Combine || node.task->type == TaskType::Split) && state.token_has_held_resources(event.token))
+        {
+            throw std::runtime_error("Task '" + node.id + "' does not support tokens that are holding resources.");
+        }
+
+        if (node.task->type == TaskType::Combine)
+        {
+            state.enqueue_combine_member(node.id, event.token);
+            const auto members = state.take_ready_combine_batch(node.id, node.task->combine->ratio);
+            if (members.empty())
+            {
+                return;
+            }
+
+            std::vector<RestorableTokenSnapshot> snapshots;
+            snapshots.reserve(members.size());
+            for (const auto member : members)
+            {
+                snapshots.push_back(state.snapshot_token(member));
+            }
+
+            const auto entity_id = state.next_entity_id(node.name, node.task->combine->entity_type);
+            const auto batch_token = state.create_token(entity_id, node.task->combine->entity_type, entity_id + ".t0", event.time);
+            state.registry().emplace<CombineBatch>(batch_token, CombineBatch{members});
+            state.set_combine_history(batch_token, std::move(snapshots));
+
+            if (requested_resources.empty())
+            {
+                state.start_task(batch_token, node, event.time, {}, 0.0);
+                return;
+            }
+
+            if (!state.has_pending_requests())
+            {
+                const auto allocation = state.allocate_resources_if_possible(node.id, node.task->resource_strategy);
+                if (!allocation.empty())
+                {
+                    state.start_task(batch_token, node, event.time, allocation, 0.0);
+                    return;
+                }
+            }
+
+            state.enqueue_request(PendingTaskRequest{state.next_order(), batch_token, node.id, event.time});
+            state.log_event(event.time, state.token(batch_token), node, "task_waiting_for_resources");
+            return;
+        }
+
         if (node.task->type == TaskType::ReleaseResource)
         {
             state.start_task(event.token, node, event.time, state.release_resources_for_task(event.token, node.id), 0.0);
@@ -1022,6 +1274,19 @@ void Engine::handle_finish_task(RunState& state, const ScheduledEvent& event) co
     {
         state.apply_release(active_task.allocated_resources, event.time, token_component.entity_id, node.id);
     }
+    else if (node.task->type == TaskType::Combine)
+    {
+        state.apply_release(active_task.allocated_resources, event.time, token_component.entity_id, node.id);
+        if (state.registry().all_of<CombineBatch>(event.token))
+        {
+            const auto members = state.registry().get<CombineBatch>(event.token).members;
+            for (const auto member : members)
+            {
+                state.destroy_token(member);
+            }
+            state.registry().remove<CombineBatch>(event.token);
+        }
+    }
     else if (node.task->type == TaskType::AcquireResource)
     {
         state.add_held_resources(event.token, active_task.allocated_resources);
@@ -1031,6 +1296,10 @@ void Engine::handle_finish_task(RunState& state, const ScheduledEvent& event) co
         state.apply_release(active_task.allocated_resources, event.time, token_component.entity_id, node.id);
         state.remove_held_resources(event.token, active_task.allocated_resources);
     }
+    else if (node.task->type == TaskType::Split)
+    {
+        state.apply_release(active_task.allocated_resources, event.time, token_component.entity_id, node.id);
+    }
     if (node.task->type == TaskType::Transport)
     {
         state.add_transport_distance(node.task->distance);
@@ -1038,14 +1307,13 @@ void Engine::handle_finish_task(RunState& state, const ScheduledEvent& event) co
     state.log_event(event.time, token_component, node, "task_finish");
     state.registry().remove<ActiveTask>(event.token);
 
-    const auto found = state.model().outgoing.find(node.id);
-    if (found != state.model().outgoing.end())
+    if (node.task->type == TaskType::Split)
     {
-        for (const auto& target_id : found->second)
-        {
-            state.schedule(ScheduledEvent{event.time, state.next_order(), ScheduledEventType::ArriveNode, target_id, event.token});
-        }
+        state.destroy_token(event.token);
+        return;
     }
+
+    state.schedule_token_to_outgoing(node.id, event.token, event.time);
 }
 
 std::string Engine::select_exclusive_gateway_target(RunState& state, const NodeDefinition& node) const
@@ -1115,6 +1383,7 @@ void Engine::handle_parallel_gateway(RunState& state, const ScheduledEvent& even
         }
 
         const auto merged_token = state.create_token(token_component.entity_id, token_component.entity_type, token_component.token_id + ".joined", token_component.created_at);
+        state.copy_combine_history(barrier.waiting_tokens.front(), merged_token);
         for (const auto waiting_token : barrier.waiting_tokens)
         {
             state.destroy_token(waiting_token);
@@ -1152,6 +1421,7 @@ void Engine::continue_parallel_gateway(RunState& state, const ScheduledEvent& ev
     {
         const auto child_token_id = barrier_token.token_id + ".p" + std::to_string(branch_index++);
         const auto child_token = state.create_token(barrier_token.entity_id, barrier_token.entity_type, child_token_id, barrier_token.created_at);
+        state.copy_combine_history(token_entity, child_token);
         state.schedule(ScheduledEvent{event.time, state.next_order(), ScheduledEventType::ArriveNode, target_id, child_token});
     }
     state.destroy_token(token_entity);

@@ -1,0 +1,16 @@
+time,entity_id,entity_type,node_id,node_name,node_type,event_type
+0.000,发生器_cargo_0,cargo,Event_start,发生器,StartEvent,entity_generated
+0.000,发生器_cargo_0,cargo,Activity_combine,合并活动,Task,task_arrive
+1.000,发生器_cargo_1,cargo,Event_start,发生器,StartEvent,entity_generated
+1.000,发生器_cargo_1,cargo,Activity_combine,合并活动,Task,task_arrive
+2.000,发生器_cargo_2,cargo,Event_start,发生器,StartEvent,entity_generated
+2.000,发生器_cargo_2,cargo,Activity_combine,合并活动,Task,task_arrive
+3.000,发生器_cargo_3,cargo,Event_start,发生器,StartEvent,entity_generated
+3.000,发生器_cargo_3,cargo,Activity_combine,合并活动,Task,task_arrive
+3.000,合并活动_truck_4,truck,Activity_combine,合并活动,Task,task_start
+13.000,合并活动_truck_4,truck,Activity_combine,合并活动,Task,task_finish
+13.000,合并活动_truck_4,truck,Activity_split,拆分活动,Task,task_arrive
+13.000,合并活动_truck_4,truck,Activity_split,拆分活动,Task,task_start
+18.000,拆分活动_box_5,box,Event_end,终点,EndEvent,entity_exit
+23.000,合并活动_truck_4,truck,Activity_split,拆分活动,Task,task_finish
+23.000,拆分活动_box_6,box,Event_end,终点,EndEvent,entity_exit

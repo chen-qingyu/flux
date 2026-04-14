@@ -163,6 +163,21 @@ private:
         throw std::runtime_error(context + " uses unsupported property '" + key + "' value '" + found->second + "'.");
     }
 
+    [[nodiscard]] bool read_required_bool(const PropertyMap& properties, const std::string& key, const std::string& context) const
+    {
+        const auto value = lower_copy(read_required_text(properties, key, context));
+        if (value == "true")
+        {
+            return true;
+        }
+        if (value == "false")
+        {
+            return false;
+        }
+
+        throw std::runtime_error(context + " uses unsupported property '" + key + "' value '" + value + "'.");
+    }
+
     [[nodiscard]] std::size_t read_required_count(const PropertyMap& properties, const std::string& key, const std::string& context) const
     {
         if (const auto found = properties.find(key); found != properties.end())
@@ -317,42 +332,144 @@ private:
         return generator;
     }
 
+    [[nodiscard]] TaskType read_task_type(const std::string& value, const std::string& context) const
+    {
+        const auto task_type = lower_copy(value);
+        if (task_type == "delay")
+        {
+            return TaskType::Delay;
+        }
+        if (task_type == "transport")
+        {
+            return TaskType::Transport;
+        }
+        if (task_type == "acquireresource")
+        {
+            return TaskType::AcquireResource;
+        }
+        if (task_type == "releaseresource")
+        {
+            return TaskType::ReleaseResource;
+        }
+        if (task_type == "combine")
+        {
+            return TaskType::Combine;
+        }
+        if (task_type == "split")
+        {
+            return TaskType::Split;
+        }
+
+        throw std::runtime_error(context + " uses unsupported _taskType '" + task_type + "'. Only 'delay', 'transport', 'acquireResource', 'releaseResource', 'combine', and 'split' are supported.");
+    }
+
+    [[nodiscard]] std::optional<TaskType> read_tag_task_type(const std::string& type_name) const
+    {
+        if (type_name == "transportTask")
+        {
+            return TaskType::Transport;
+        }
+        if (type_name == "acquireResourceTask")
+        {
+            return TaskType::AcquireResource;
+        }
+        if (type_name == "releaseResourceTask")
+        {
+            return TaskType::ReleaseResource;
+        }
+        if (type_name == "combineTask")
+        {
+            return TaskType::Combine;
+        }
+        if (type_name == "splitTask")
+        {
+            return TaskType::Split;
+        }
+        return std::nullopt;
+    }
+
+    [[nodiscard]] CombineSpec read_combine_spec(const PropertyMap& properties, const std::string& context) const
+    {
+        CombineSpec combine;
+        combine.method = read_required_enum<CombineMethod>(properties, "_method", context);
+        if (combine.method == CombineMethod::Quantity)
+        {
+            throw std::runtime_error(context + " does not support combine method 'quantity' yet.");
+        }
+
+        combine.ratio = read_required_count(properties, "_ratio", context);
+        combine.entity_type = read_required_text(properties, "_entityType", context);
+        return combine;
+    }
+
+    [[nodiscard]] SplitSpec read_split_spec(const PropertyMap& properties, const std::string& context) const
+    {
+        SplitSpec split;
+        split.method = read_required_enum<SplitMethod>(properties, "_method", context);
+        if (split.method == SplitMethod::Quantity)
+        {
+            throw std::runtime_error(context + " does not support split method 'quantity' yet.");
+        }
+
+        split.one_off = read_required_bool(properties, "_oneOff", context);
+        if (split.method == SplitMethod::Ratio)
+        {
+            split.ratio = read_required_count(properties, "_ratio", context);
+            split.entity_type = read_required_text(properties, "_entityType", context);
+            return split;
+        }
+
+        if (properties.contains("_ratio"))
+        {
+            throw std::runtime_error(context + " must not define '_ratio' when '_method=restore'.");
+        }
+        if (properties.contains("_entityType"))
+        {
+            throw std::runtime_error(context + " must not define '_entityType' when '_method=restore'.");
+        }
+
+        return split;
+    }
+
     [[nodiscard]] TaskSpec read_task_spec(const pugi::xml_node& node) const
     {
         const auto properties = read_properties(node);
         const auto context = "Task '" + read_required_attribute(node, "id", "Task") + "'";
-
-        const auto task_type = lower_copy(read_required_text(properties, "_taskType", context));
+        const auto type_name = local_name(node.name());
+        const auto declared_task_type = read_task_type(read_required_text(properties, "_taskType", context), context);
+        const auto tag_task_type = read_tag_task_type(type_name);
         TaskSpec task;
-        if (task_type == "delay")
+
+        if (tag_task_type.has_value() && declared_task_type != *tag_task_type)
         {
-            task.type = TaskType::Delay;
+            throw std::runtime_error(context + " element type and '_taskType' disagree.");
         }
-        else if (task_type == "transport")
+        if (!tag_task_type.has_value() && (declared_task_type == TaskType::Combine || declared_task_type == TaskType::Split))
         {
-            task.type = TaskType::Transport;
+            throw std::runtime_error(context + " must use dedicated combine/split task elements for '_taskType'.");
+        }
+
+        task.type = declared_task_type;
+        if (task.type == TaskType::Transport)
+        {
             task.distance = read_required_double(properties, "_distance", context);
             if (task.distance < 0.0)
             {
                 throw std::runtime_error(context + " property '_distance' must be non-negative.");
             }
         }
-        else if (task_type == "acquireresource")
-        {
-            task.type = TaskType::AcquireResource;
-        }
-        else if (task_type == "releaseresource")
-        {
-            task.type = TaskType::ReleaseResource;
-        }
-        else
-        {
-            throw std::runtime_error(context + " uses unsupported _taskType '" + task_type + "'. Only 'delay', 'transport', 'acquireResource', and 'releaseResource' are supported.");
-        }
 
-        if (task.type == TaskType::Delay || task.type == TaskType::Transport)
+        if (task.type == TaskType::Delay || task.type == TaskType::Transport || task.type == TaskType::Combine || task.type == TaskType::Split)
         {
             task.duration_distribution = read_distribution(properties, "_distributionType", context);
+        }
+        if (task.type == TaskType::Combine)
+        {
+            task.combine = read_combine_spec(properties, context);
+        }
+        if (task.type == TaskType::Split)
+        {
+            task.split = read_split_spec(properties, context);
         }
         if (properties.contains("_resourceStrategy"))
         {
@@ -435,6 +552,16 @@ private:
             return;
         }
         if (type_name == "transportTask")
+        {
+            parse_task(child);
+            return;
+        }
+        if (type_name == "combineTask")
+        {
+            parse_task(child);
+            return;
+        }
+        if (type_name == "splitTask")
         {
             parse_task(child);
             return;
@@ -708,7 +835,7 @@ private:
                             resource_count = resources->second.size();
                         }
 
-                        if ((definition.task->type == TaskType::Delay || definition.task->type == TaskType::Transport) && resource_count > 1 && !definition.task->resource_strategy.has_value())
+                        if ((definition.task->type == TaskType::Delay || definition.task->type == TaskType::Transport || definition.task->type == TaskType::Combine || definition.task->type == TaskType::Split) && resource_count > 1 && !definition.task->resource_strategy.has_value())
                         {
                             throw std::runtime_error("Task '" + node_id + "' must provide '_resourceStrategy' when multiple resources are associated.");
                         }
@@ -730,9 +857,17 @@ private:
                             throw std::runtime_error("Task '" + node_id + "' must not define '_resourceStrategy'.");
                         }
                     }
-                    if (definition.task->type == TaskType::Delay || definition.task->type == TaskType::Transport)
+                    if (definition.task->type == TaskType::Delay || definition.task->type == TaskType::Transport || definition.task->type == TaskType::Combine || definition.task->type == TaskType::Split)
                     {
                         validate_distribution(definition.task->duration_distribution, "Task '" + node_id + "'");
+                    }
+                    if (definition.task->type == TaskType::Combine && !definition.task->combine.has_value())
+                    {
+                        throw std::runtime_error("Task '" + node_id + "' is missing combine settings.");
+                    }
+                    if (definition.task->type == TaskType::Split && !definition.task->split.has_value())
+                    {
+                        throw std::runtime_error("Task '" + node_id + "' is missing split settings.");
                     }
                     break;
                 case NodeType::EndEvent:

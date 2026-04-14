@@ -31,3 +31,8 @@ TEST_CASE("Transport golden CSV stays stable", "[golden][transport]")
 {
     flux::test_support::require_report_matches(std::filesystem::path("data") / "tests" / "transport_minimal.bpmn", "transport");
 }
+
+TEST_CASE("Combine split golden CSV stays stable", "[golden][combine-split]")
+{
+    flux::test_support::require_report_matches(std::filesystem::path("data") / "tests" / "combine_split_minimal.bpmn", "combine_split");
+}

@@ -38,6 +38,21 @@ enum class TaskType
     Transport,
     AcquireResource,
     ReleaseResource,
+    Combine,
+    Split,
+};
+
+enum class CombineMethod
+{
+    Ratio,
+    Quantity,
+};
+
+enum class SplitMethod
+{
+    Ratio,
+    Restore,
+    Quantity,
 };
 
 enum class GatewayCriteria
@@ -61,6 +76,21 @@ struct GeneratorSpec
     std::string entity_type;
 };
 
+struct CombineSpec
+{
+    CombineMethod method{CombineMethod::Ratio};
+    std::size_t ratio{0};
+    std::string entity_type;
+};
+
+struct SplitSpec
+{
+    SplitMethod method{SplitMethod::Ratio};
+    std::size_t ratio{0};
+    bool one_off{true};
+    std::string entity_type;
+};
+
 // 任务配置同时承载执行时间、资源策略和运输距离等可选语义。
 struct TaskSpec
 {
@@ -68,6 +98,8 @@ struct TaskSpec
     DistributionSpec duration_distribution{};
     std::optional<ResourceStrategy> resource_strategy;
     double distance{0.0};
+    std::optional<CombineSpec> combine;
+    std::optional<SplitSpec> split;
 };
 
 struct NodeDefinition

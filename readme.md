@@ -19,6 +19,8 @@ BPMN File -> Parser -> Model (ECS Graph) -> Engine (DOD + EnTT) -> Reporter -> O
 - `iscsim:transportTask`
 - `iscsim:acquireResourceTask`
 - `iscsim:releaseResourceTask`
+- `iscsim:combineTask`
+- `iscsim:splitTask`
 - `endEvent`
 - `exclusiveGateway`
 - `parallelGateway`
@@ -31,6 +33,8 @@ BPMN File -> Parser -> Model (ECS Graph) -> Engine (DOD + EnTT) -> Reporter -> O
 - 固定随机种子，结果可复现
 - 资源策略：`All`、`Any`
 - 显式资源生命周期：`acquireResource`、`releaseResource`
+- 合并活动：按比例 `ratio` 进行合并
+- 拆分活动：按比例 `ratio` 进行拆分，或者按最近一次合并记录进行 `restore`
 - 网关语义：`XOR`、`AND`
 - 输出报表，包括实体事件日志、资源占用时间线、资源利用率等信息
 - 时间是无量纲时间，单位可由用户定义
@@ -104,7 +108,7 @@ python run.py data/demo.bpmn --seed 42
 
 ### 任务
 
-任务至少要提供 `_taskType`，当前支持 `delay`、`transport`、`acquireResource` 和 `releaseResource`。
+任务至少要提供 `_taskType`，当前支持 `delay`、`transport`、`acquireResource`、`releaseResource`、`combine` 和 `split`。
 
 当 `_taskType=delay|transport` 时，任务需要耗时，因此必须提供 `_distributionType`。
 
@@ -114,11 +118,30 @@ python run.py data/demo.bpmn --seed 42
 
 当 `_taskType=releaseResource` 时，任务也会瞬时完成，并且不支持 `_resourceStrategy`。如果该任务绑定了资源，则只释放当前实体持有且与绑定列表相交的资源；如果没有绑定资源，则释放当前实体持有的全部资源。
 
+当 `_taskType=combine` 时，任务必须使用 `iscsim:combineTask` 元素，并且当前只支持 `_method=ratio`。还需要提供：
+
+- `_ratio`：按 `N -> 1` 合并
+- `_entityType`：合并后的新实体类型
+- `_distributionType` 及对应分布参数：表示整批合并耗时
+
+实体到达合并活动后，只有凑满比例的一批才会真正启动任务；不足比例的余数会继续停留在该活动中等待。合并活动可以像普通耗时任务一样绑定资源并使用 `_resourceStrategy`。
+
+当 `_taskType=split` 时，任务必须使用 `iscsim:splitTask` 元素，并提供 `_oneOff=true|false` 与 `_distributionType`。当前支持两种方法：
+
+- `_method=ratio`：还需要 `_ratio` 与新的 `_entityType`，表示 `1 -> M` 拆分
+- `_method=restore`：要求输入实体之前由 combine 生成；会按最近一次未还原的合并记录恢复原始实体 id、类型和数量
+
+`_oneOff=true` 表示所有子实体在拆分耗时结束后统一下发；`_oneOff=false` 表示按照 `总耗时 / 子实体数` 的间隔逐个下发。拆分活动同样可以绑定资源并使用 `_resourceStrategy`。
+
+`quantity` 相关方法当前只占位，解析阶段会直接报不支持。
+
 普通 `delay` / `transport` 任务如果只关联一种资源，可以省略 `_resourceStrategy`；如果任务关联了多种资源，则必须提供 `_resourceStrategy=all|any`。
 
 资源绑定可以通过 `association`，也可以通过 `dataInputAssociation` / `dataOutputAssociation` 把任务连到 `dataStoreReference`。
 
 如果实体到达 `endEvent` 时仍持有资源，则这些资源不会自动释放，而是保持占用直到仿真结束。
+
+当前限制：正在持有资源的实体不能进入 `combine` / `split` 任务；如果需要这一语义，需要后续单独定义资源在批处理拆并过程中的归属规则。
 
 ### 资源
 

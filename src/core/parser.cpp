@@ -381,29 +381,21 @@ private:
     {
         SplitSpec split;
         split.method = read_required_enum<SplitMethod>(properties, "_method", context);
-        if (split.method == SplitMethod::Quantity)
-        {
-            throw std::runtime_error(context + " does not support split method 'quantity' yet.");
-        }
-
         split.one_off = read_required_bool(properties, "_oneOff", context);
-        if (split.method == SplitMethod::Ratio)
+
+        switch (split.method)
         {
-            split.ratio = read_required_count(properties, "_ratio", context);
-            split.entity_type = read_required_text(properties, "_entityType", context);
-            return split;
+            case SplitMethod::Ratio:
+                split.ratio = read_required_count(properties, "_ratio", context);
+                split.entity_type = read_required_text(properties, "_entityType", context);
+                return split;
+            case SplitMethod::Restore:
+                return split;
+            case SplitMethod::Quantity:
+                throw std::runtime_error(context + " does not support split method 'quantity' yet.");
         }
 
-        if (properties.contains("_ratio"))
-        {
-            throw std::runtime_error(context + " must not define '_ratio' when '_method=restore'.");
-        }
-        if (properties.contains("_entityType"))
-        {
-            throw std::runtime_error(context + " must not define '_entityType' when '_method=restore'.");
-        }
-
-        return split;
+        throw std::runtime_error(context + " uses unsupported split method.");
     }
 
     [[nodiscard]] TaskSpec read_task_spec(const pugi::xml_node& node) const

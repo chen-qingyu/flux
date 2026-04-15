@@ -1,8 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <bpmn:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
-    xmlns:camunda="http://camunda.org/schema/1.0/bpmn"
-    xmlns:iscsim="http://iscsim.example/schema/bpmn" id="Definitions_Transport_Minimal" targetNamespace="http://bpmn.io/schema/bpmn">
+    xmlns:camunda="http://camunda.org/schema/1.0/bpmn" id="Definitions_Transport_Minimal" targetNamespace="http://bpmn.io/schema/bpmn">
     <bpmn:process id="Process_transport_minimal" name="运输任务最小流程" isExecutable="true">
         <bpmn:startEvent id="Event_start" name="运输发生器">
             <bpmn:extensionElements>
@@ -16,7 +15,7 @@
             </bpmn:extensionElements>
             <bpmn:outgoing>Flow_start_to_transport</bpmn:outgoing>
         </bpmn:startEvent>
-        <iscsim:transportTask id="Task_transport" name="运输任务">
+        <bpmn:task id="Task_transport" name="运输任务">
             <bpmn:extensionElements>
                 <camunda:properties>
                     <camunda:property name="_taskType" value="transport" />
@@ -27,7 +26,7 @@
             </bpmn:extensionElements>
             <bpmn:incoming>Flow_start_to_transport</bpmn:incoming>
             <bpmn:outgoing>Flow_transport_to_end</bpmn:outgoing>
-        </iscsim:transportTask>
+        </bpmn:task>
         <bpmn:endEvent id="Event_end" name="结束">
             <bpmn:incoming>Flow_transport_to_end</bpmn:incoming>
         </bpmn:endEvent>

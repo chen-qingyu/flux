@@ -363,31 +363,6 @@ private:
         throw std::runtime_error(context + " uses unsupported _taskType '" + task_type + "'. Only 'delay', 'transport', 'acquireResource', 'releaseResource', 'combine', and 'split' are supported.");
     }
 
-    [[nodiscard]] std::optional<TaskType> read_tag_task_type(const std::string& type_name) const
-    {
-        if (type_name == "transportTask")
-        {
-            return TaskType::Transport;
-        }
-        if (type_name == "acquireResourceTask")
-        {
-            return TaskType::AcquireResource;
-        }
-        if (type_name == "releaseResourceTask")
-        {
-            return TaskType::ReleaseResource;
-        }
-        if (type_name == "combineTask")
-        {
-            return TaskType::Combine;
-        }
-        if (type_name == "splitTask")
-        {
-            return TaskType::Split;
-        }
-        return std::nullopt;
-    }
-
     [[nodiscard]] CombineSpec read_combine_spec(const PropertyMap& properties, const std::string& context) const
     {
         CombineSpec combine;
@@ -435,19 +410,8 @@ private:
     {
         const auto properties = read_properties(node);
         const auto context = "Task '" + read_required_attribute(node, "id", "Task") + "'";
-        const auto type_name = local_name(node.name());
         const auto declared_task_type = read_task_type(read_required_text(properties, "_taskType", context), context);
-        const auto tag_task_type = read_tag_task_type(type_name);
         TaskSpec task;
-
-        if (tag_task_type.has_value() && declared_task_type != *tag_task_type)
-        {
-            throw std::runtime_error(context + " element type and '_taskType' disagree.");
-        }
-        if (!tag_task_type.has_value() && (declared_task_type == TaskType::Combine || declared_task_type == TaskType::Split))
-        {
-            throw std::runtime_error(context + " must use dedicated combine/split task elements for '_taskType'.");
-        }
 
         task.type = declared_task_type;
         if (task.type == TaskType::Transport)
@@ -537,31 +501,6 @@ private:
             return;
         }
         if (type_name == "task")
-        {
-            parse_task(child);
-            return;
-        }
-        if (type_name == "acquireResourceTask")
-        {
-            parse_task(child);
-            return;
-        }
-        if (type_name == "releaseResourceTask")
-        {
-            parse_task(child);
-            return;
-        }
-        if (type_name == "transportTask")
-        {
-            parse_task(child);
-            return;
-        }
-        if (type_name == "combineTask")
-        {
-            parse_task(child);
-            return;
-        }
-        if (type_name == "splitTask")
         {
             parse_task(child);
             return;

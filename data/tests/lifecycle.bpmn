@@ -1,8 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <bpmn:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
-    xmlns:camunda="http://camunda.org/schema/1.0/bpmn"
-    xmlns:iscsim="http://iscsim.org/schema" id="Definitions_Lifecycle" targetNamespace="http://bpmn.io/schema/bpmn">
+    xmlns:camunda="http://camunda.org/schema/1.0/bpmn" id="Definitions_Lifecycle" targetNamespace="http://bpmn.io/schema/bpmn">
     <bpmn:process id="Process_lifecycle" name="资源生命周期综合流程" isExecutable="true">
         <bpmn:startEvent id="Event_start_subset" name="子集释放发生器">
             <bpmn:extensionElements>
@@ -29,7 +28,7 @@
             <bpmn:outgoing>Flow_all_start_to_delay</bpmn:outgoing>
         </bpmn:startEvent>
 
-        <iscsim:acquireResourceTask id="Task_acquire_subset" name="获取两种资源">
+        <bpmn:task id="Task_acquire_subset" name="获取两种资源">
             <bpmn:extensionElements>
                 <camunda:properties>
                     <camunda:property name="_taskType" value="acquireResource" />
@@ -38,7 +37,7 @@
             </bpmn:extensionElements>
             <bpmn:incoming>Flow_subset_start_to_acquire</bpmn:incoming>
             <bpmn:outgoing>Flow_subset_acquire_to_hold</bpmn:outgoing>
-        </iscsim:acquireResourceTask>
+        </bpmn:task>
         <bpmn:task id="Task_hold_subset" name="持有两种资源">
             <bpmn:extensionElements>
                 <camunda:properties>
@@ -50,7 +49,7 @@
             <bpmn:incoming>Flow_subset_acquire_to_hold</bpmn:incoming>
             <bpmn:outgoing>Flow_subset_hold_to_release_bound</bpmn:outgoing>
         </bpmn:task>
-        <iscsim:releaseResourceTask id="Task_release_bound" name="只释放叉车">
+        <bpmn:task id="Task_release_bound" name="只释放叉车">
             <bpmn:extensionElements>
                 <camunda:properties>
                     <camunda:property name="_taskType" value="releaseResource" />
@@ -58,7 +57,7 @@
             </bpmn:extensionElements>
             <bpmn:incoming>Flow_subset_hold_to_release_bound</bpmn:incoming>
             <bpmn:outgoing>Flow_release_bound_to_hold_driver</bpmn:outgoing>
-        </iscsim:releaseResourceTask>
+        </bpmn:task>
         <bpmn:task id="Task_hold_driver" name="继续持有司机">
             <bpmn:extensionElements>
                 <camunda:properties>
@@ -70,7 +69,7 @@
             <bpmn:incoming>Flow_release_bound_to_hold_driver</bpmn:incoming>
             <bpmn:outgoing>Flow_hold_driver_to_release_all_remaining</bpmn:outgoing>
         </bpmn:task>
-        <iscsim:releaseResourceTask id="Task_release_all_remaining" name="释放剩余资源">
+        <bpmn:task id="Task_release_all_remaining" name="释放剩余资源">
             <bpmn:extensionElements>
                 <camunda:properties>
                     <camunda:property name="_taskType" value="releaseResource" />
@@ -78,7 +77,7 @@
             </bpmn:extensionElements>
             <bpmn:incoming>Flow_hold_driver_to_release_all_remaining</bpmn:incoming>
             <bpmn:outgoing>Flow_release_all_remaining_to_end</bpmn:outgoing>
-        </iscsim:releaseResourceTask>
+        </bpmn:task>
 
         <bpmn:task id="Task_delay_all_arrival" name="延迟到达全部释放">
             <bpmn:extensionElements>
@@ -92,7 +91,7 @@
             <bpmn:outgoing>Flow_all_delay_to_acquire</bpmn:outgoing>
         </bpmn:task>
 
-        <iscsim:acquireResourceTask id="Task_acquire_all" name="再次获取两种资源">
+        <bpmn:task id="Task_acquire_all" name="再次获取两种资源">
             <bpmn:extensionElements>
                 <camunda:properties>
                     <camunda:property name="_taskType" value="acquireResource" />
@@ -101,7 +100,7 @@
             </bpmn:extensionElements>
             <bpmn:incoming>Flow_all_delay_to_acquire</bpmn:incoming>
             <bpmn:outgoing>Flow_all_acquire_to_hold</bpmn:outgoing>
-        </iscsim:acquireResourceTask>
+        </bpmn:task>
         <bpmn:task id="Task_hold_all" name="再次持有两种资源">
             <bpmn:extensionElements>
                 <camunda:properties>
@@ -113,7 +112,7 @@
             <bpmn:incoming>Flow_all_acquire_to_hold</bpmn:incoming>
             <bpmn:outgoing>Flow_all_hold_to_release</bpmn:outgoing>
         </bpmn:task>
-        <iscsim:releaseResourceTask id="Task_release_all" name="释放全部资源">
+        <bpmn:task id="Task_release_all" name="释放全部资源">
             <bpmn:extensionElements>
                 <camunda:properties>
                     <camunda:property name="_taskType" value="releaseResource" />
@@ -121,7 +120,7 @@
             </bpmn:extensionElements>
             <bpmn:incoming>Flow_all_hold_to_release</bpmn:incoming>
             <bpmn:outgoing>Flow_release_all_to_end</bpmn:outgoing>
-        </iscsim:releaseResourceTask>
+        </bpmn:task>
 
         <bpmn:dataStoreReference id="DataStoreReference_forklift" name="叉车">
             <bpmn:extensionElements>

@@ -16,11 +16,6 @@ BPMN File -> Parser -> Model (ECS Graph) -> Engine (DOD + EnTT) -> Reporter -> O
 
 - `startEvent`
 - `task`
-- `iscsim:transportTask`
-- `iscsim:acquireResourceTask`
-- `iscsim:releaseResourceTask`
-- `iscsim:combineTask`
-- `iscsim:splitTask`
 - `endEvent`
 - `exclusiveGateway`
 - `parallelGateway`
@@ -118,7 +113,7 @@ python run.py data/demo.bpmn --seed 42
 
 当 `_taskType=releaseResource` 时，任务也会瞬时完成，并且不支持 `_resourceStrategy`。如果该任务绑定了资源，则只释放当前实体持有且与绑定列表相交的资源；如果没有绑定资源，则释放当前实体持有的全部资源。
 
-当 `_taskType=combine` 时，任务必须使用 `iscsim:combineTask` 元素，并且当前只支持 `_method=ratio`。还需要提供：
+当 `_taskType=combine` 时，当前只支持 `_method=ratio`。还需要提供：
 
 - `_ratio`：按 `N -> 1` 合并
 - `_entityType`：合并后的新实体类型
@@ -126,7 +121,7 @@ python run.py data/demo.bpmn --seed 42
 
 实体到达合并活动后，只有凑满比例的一批才会真正启动任务；不足比例的余数会继续停留在该活动中等待。合并活动可以像普通耗时任务一样绑定资源并使用 `_resourceStrategy`。
 
-当 `_taskType=split` 时，任务必须使用 `iscsim:splitTask` 元素，并提供 `_oneOff=true|false` 与 `_distributionType`。当前支持两种方法：
+当 `_taskType=split` 时，提供 `_oneOff=true|false` 与 `_distributionType`。当前支持两种方法：
 
 - `_method=ratio`：还需要 `_ratio` 与新的 `_entityType`，表示 `1 -> M` 拆分
 - `_method=restore`：要求输入实体之前由 combine 生成；会按最近一次未还原的合并记录恢复原始实体 id、类型和数量

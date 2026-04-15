@@ -1,8 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <bpmn:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
-    xmlns:camunda="http://camunda.org/schema/1.0/bpmn"
-    xmlns:iscsim="http://iscsim.org/schema" id="Definitions_CombineSplitRatio" targetNamespace="http://bpmn.io/schema/bpmn">
+    xmlns:camunda="http://camunda.org/schema/1.0/bpmn" id="Definitions_CombineSplitRatio" targetNamespace="http://bpmn.io/schema/bpmn">
     <bpmn:process id="Process_CombineSplitRatio" isExecutable="true">
         <bpmn:startEvent id="Event_start" name="发生器">
             <bpmn:extensionElements>
@@ -17,7 +16,7 @@
             <bpmn:outgoing>Flow_start_combine</bpmn:outgoing>
         </bpmn:startEvent>
         <bpmn:sequenceFlow id="Flow_start_combine" sourceRef="Event_start" targetRef="Activity_combine" />
-        <iscsim:combineTask id="Activity_combine" name="合并活动">
+        <bpmn:task id="Activity_combine" name="合并活动">
             <bpmn:extensionElements>
                 <camunda:properties>
                     <camunda:property name="_taskType" value="combine" />
@@ -30,9 +29,9 @@
             </bpmn:extensionElements>
             <bpmn:incoming>Flow_start_combine</bpmn:incoming>
             <bpmn:outgoing>Flow_combine_split</bpmn:outgoing>
-        </iscsim:combineTask>
+        </bpmn:task>
         <bpmn:sequenceFlow id="Flow_combine_split" sourceRef="Activity_combine" targetRef="Activity_split" />
-        <iscsim:splitTask id="Activity_split" name="拆分活动">
+        <bpmn:task id="Activity_split" name="拆分活动">
             <bpmn:extensionElements>
                 <camunda:properties>
                     <camunda:property name="_taskType" value="split" />
@@ -46,7 +45,7 @@
             </bpmn:extensionElements>
             <bpmn:incoming>Flow_combine_split</bpmn:incoming>
             <bpmn:outgoing>Flow_split_end</bpmn:outgoing>
-        </iscsim:splitTask>
+        </bpmn:task>
         <bpmn:sequenceFlow id="Flow_split_end" sourceRef="Activity_split" targetRef="Event_end" />
         <bpmn:endEvent id="Event_end" name="终点">
             <bpmn:incoming>Flow_split_end</bpmn:incoming>

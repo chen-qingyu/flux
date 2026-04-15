@@ -91,7 +91,7 @@ python run.py data/demo.bpmn --seed 42
 
 ### 开始事件
 
-开始事件至少要提供：
+必填属性：
 
 - `_initiatorType`
 - `_entityCount`
@@ -103,51 +103,74 @@ python run.py data/demo.bpmn --seed 42
 
 ### 任务
 
-任务至少要提供 `_taskType`，当前支持 `delay`、`transport`、`acquireResource`、`releaseResource`、`combine` 和 `split`。
+必填属性：
 
-当 `_taskType=delay|transport` 时，任务需要耗时，因此必须提供 `_distributionType`。
+- `_taskType`
 
-当 `_taskType=transport` 时，还必须提供 `_distance`，表示该次运输任务完成后累计到引擎结果中的运输距离。
+支持类型：`delay`、`transport`、`acquireResource`、`releaseResource`、`combine`、`split`
 
-当 `_taskType=acquireResource` 时，任务会瞬时完成，但会先申请并持有绑定资源，直到后续显式释放。该任务至少要绑定一种资源；如果绑定了多种资源，则必须提供 `_resourceStrategy=all|any`。
+规则：
 
-当 `_taskType=releaseResource` 时，任务也会瞬时完成，并且不支持 `_resourceStrategy`。如果该任务绑定了资源，则只释放当前实体持有且与绑定列表相交的资源；如果没有绑定资源，则释放当前实体持有的全部资源。
+- 资源可以通过 `association` 绑定，也可以通过 `dataInputAssociation` / `dataOutputAssociation` 关联到 `dataStoreReference`
+- 需要资源的任务在绑定一种资源时可省略 `_resourceStrategy`；绑定多种资源时必须提供 `_resourceStrategy=all|any`
 
-当 `_taskType=combine` 时，当前只支持 `_method=ratio`。还需要提供：
+#### delay
 
-- `_ratio`：按 `N -> 1` 合并
-- `_entityType`：合并后的新实体类型
-- `_distributionType` 及对应分布参数：表示整批合并耗时
+必填：`_distributionType`
 
-实体到达合并活动后，只有凑满比例的一批才会真正启动任务；不足比例的余数会继续停留在该活动中等待。合并活动可以像普通耗时任务一样绑定资源并使用 `_resourceStrategy`。
+说明：普通耗时任务，可绑定资源。
 
-当 `_taskType=split` 时，提供 `_oneOff=true|false` 与 `_distributionType`。当前支持两种方法：
+#### transport
 
-- `_method=ratio`：还需要 `_ratio` 与新的 `_entityType`，表示 `1 -> M` 拆分
-- `_method=restore`：要求输入实体之前由 combine 生成；会按最近一次未还原的合并记录恢复原始实体 id、类型和数量
+必填：`_distributionType`、`_distance`
 
-`_oneOff=true` 表示所有子实体在拆分耗时结束后统一下发；`_oneOff=false` 表示按照 `总耗时 / 子实体数` 的间隔逐个下发。拆分活动同样可以绑定资源并使用 `_resourceStrategy`。
+说明：普通耗时任务，可绑定资源。`_distance` 会累计到运输距离结果。
 
-`quantity` 相关方法当前只占位，解析阶段会直接报不支持。
+#### acquireResource
 
-普通 `delay` / `transport` 任务如果只关联一种资源，可以省略 `_resourceStrategy`；如果任务关联了多种资源，则必须提供 `_resourceStrategy=all|any`。
+必填：至少绑定 1 种资源
 
-资源绑定可以通过 `association`，也可以通过 `dataInputAssociation` / `dataOutputAssociation` 把任务连到 `dataStoreReference`。
+说明：瞬时完成。任务会先申请并持有资源，直到后续显式释放。实体到达 `endEvent` 时如果仍持有资源，不会自动释放，而是保持占用直到仿真结束。持有资源的实体不支持进入 `combine` / `split` 任务。
 
-如果实体到达 `endEvent` 时仍持有资源，则这些资源不会自动释放，而是保持占用直到仿真结束。
+#### releaseResource
 
-当前限制：正在持有资源的实体不能进入 `combine` / `split` 任务；如果需要这一语义，需要后续单独定义资源在批处理拆并过程中的归属规则。
+必填：无
+
+说明：瞬时完成，不支持 `_resourceStrategy`。如果任务绑定了资源，只释放“当前持有资源”和“绑定资源”的交集；如果没有绑定资源，则释放当前持有的全部资源。
+
+#### combine
+
+必填：`_method`、`_distributionType`
+
+说明：按 `N -> 1` 合并。只有凑满一批才会启动，不足比例的实体会继续等待。该任务也可以绑定资源。
+
+支持方法：
+
+- `_method=ratio`：还需要 `_ratio` 和新的 `_entityType`，表示 `N -> 1` 合并
+- `_method=quantity`：目前只是占位，解析阶段会直接报不支持
+
+#### split
+
+必填：`_method`、`_oneOff=true|false`、`_distributionType`
+
+说明：拆分任务，可绑定资源。`_oneOff=true` 表示全部子实体在拆分结束后一次性下发；`_oneOff=false` 表示按 `总耗时 / 子实体数` 的间隔逐个下发。
+
+支持方法：
+
+- `_method=ratio`：还需要 `_ratio` 和新的 `_entityType`，表示 `1 -> M` 拆分
+- `_method=restore`：要求输入实体之前由 `combine` 生成；会按最近一次未还原的合并记录恢复原始实体ID、类型和数量
+- `_method=quantity`：目前只是占位，解析阶段会直接报不支持
 
 ### 资源
 
-资源至少要提供：
+必填属性：
 
 - `_resourceType`
 - `_capacity`
 
 ### 分布属性
 
-当前支持这些分布：
+支持分布：
 
 - `static`: 固定间隔，属性是 `_staticInterval`
 - `uniform`: 均匀分布，属性是 `_min` 和 `_max`
@@ -155,9 +178,10 @@ python run.py data/demo.bpmn --seed 42
 - `normal`: 正态分布，属性是 `_mean` 和 `_standardDeviation`
 - `lognormal`: 对数正态分布，属性是 `_mean` 和 `_standardDeviation`
 
-分布属性的参数在解析阶段会进行校验，时间语义要求采样结果非负，因此解析层会拒绝明显落到负时间域的输入。
+校验规则：
 
-另外，正态分布当前为了性能采取负值截到 `0` 的处理，而不是重采样。
+- 解析阶段会校验参数，拒绝明显落到负时间域的输入
+- `normal` 为了性能会把负值截到 `0`，不会重采样
 
 ## 最小示例
 

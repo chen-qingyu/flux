@@ -44,7 +44,7 @@ std::filesystem::path csv_path(const std::filesystem::path& output_directory, co
 void write_events(const std::filesystem::path& output_directory, const ReportBundle& bundle, const std::string& file_suffix)
 {
     auto stream = open_csv_file(csv_path(output_directory, "events", file_suffix));
-    auto writer = csv::make_csv_writer(stream);
+    auto writer = csv::make_csv_writer_buffered(stream);
 
     writer << std::vector<std::string>{
         "time", "entity_id", "entity_type", "node_id", "node_name", "node_type", "event_type"};
@@ -65,7 +65,7 @@ void write_events(const std::filesystem::path& output_directory, const ReportBun
 void write_resource_timeline(const std::filesystem::path& output_directory, const ReportBundle& bundle, const std::string& file_suffix)
 {
     auto stream = open_csv_file(csv_path(output_directory, "resource_timeline", file_suffix));
-    auto writer = csv::make_csv_writer(stream);
+    auto writer = csv::make_csv_writer_buffered(stream);
 
     writer << std::vector<std::string>{
         "time", "resource_id", "resource_name", "change_type", "in_use", "available", "queue_length", "entity_id", "task_id"};
@@ -88,7 +88,7 @@ void write_resource_timeline(const std::filesystem::path& output_directory, cons
 void write_resource_summary(const std::filesystem::path& output_directory, const ReportBundle& bundle, const std::string& file_suffix)
 {
     auto stream = open_csv_file(csv_path(output_directory, "resource_summary", file_suffix));
-    auto writer = csv::make_csv_writer(stream);
+    auto writer = csv::make_csv_writer_buffered(stream);
 
     writer << std::vector<std::string>{
         "resource_id", "resource_name", "capacity", "busy_time", "idle_time", "utilization", "max_queue_length", "average_wait_time", "allocation_count", "simulation_horizon"};

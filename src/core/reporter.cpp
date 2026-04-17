@@ -14,8 +14,8 @@ namespace flux
 namespace
 {
 
-constexpr int TIME_PRECISION = 3;
-constexpr int RATIO_PRECISION = 3;
+constexpr int TIME_PRECISION = 2;
+constexpr int RATIO_PRECISION = 4;
 
 std::string format_fixed(double value, int precision)
 {

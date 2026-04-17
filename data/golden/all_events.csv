@@ -1,6 +1,6 @@
 time,entity_id,entity_type,node_id,node_name,node_type,event_type
-0.000,ALL发生器_case_0,case,Event_start,ALL发生器,StartEvent,entity_generated
-0.000,ALL发生器_case_0,case,Task_service,全部资源服务,Task,task_arrive
-0.000,ALL发生器_case_0,case,Task_service,全部资源服务,Task,task_start
-4.000,ALL发生器_case_0,case,Task_service,全部资源服务,Task,task_finish
-4.000,ALL发生器_case_0,case,Event_end,结束,EndEvent,entity_exit
+0.00,ALL发生器_case_0,case,Event_start,ALL发生器,StartEvent,entity_generated
+0.00,ALL发生器_case_0,case,Task_service,全部资源服务,Task,task_arrive
+0.00,ALL发生器_case_0,case,Task_service,全部资源服务,Task,task_start
+4.00,ALL发生器_case_0,case,Task_service,全部资源服务,Task,task_finish
+4.00,ALL发生器_case_0,case,Event_end,结束,EndEvent,entity_exit

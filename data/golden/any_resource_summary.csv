@@ -1,3 +1,3 @@
 resource_id,resource_name,capacity,busy_time,idle_time,utilization,max_queue_length,average_wait_time,allocation_count,simulation_horizon
-DataStoreReference_clerk,柜员,1,4.000,0.000,1.000,0,0.000,1,4.000
-DataStoreReference_kiosk,自助机,1,0.000,4.000,0.000,0,0.000,0,4.000
+DataStoreReference_clerk,柜员,1,4.00,0.00,1.0000,0,0.00,1,4.00
+DataStoreReference_kiosk,自助机,1,0.00,4.00,0.0000,0,0.00,0,4.00

@@ -1,7 +1,7 @@
 time,resource_id,resource_name,change_type,in_use,available,queue_length,entity_id,task_id
-0.000,DataStoreReference_counter,窗口,allocate,1,0,0,FIFO发生器_customer_0,Task_service
-4.000,DataStoreReference_counter,窗口,release,0,1,2,FIFO发生器_customer_0,Task_service
-4.000,DataStoreReference_counter,窗口,allocate,1,0,1,FIFO发生器_customer_1,Task_service
-8.000,DataStoreReference_counter,窗口,release,0,1,1,FIFO发生器_customer_1,Task_service
-8.000,DataStoreReference_counter,窗口,allocate,1,0,0,FIFO发生器_customer_2,Task_service
-12.000,DataStoreReference_counter,窗口,release,0,1,0,FIFO发生器_customer_2,Task_service
+0.00,DataStoreReference_counter,窗口,allocate,1,0,0,FIFO发生器_customer_0,Task_service
+4.00,DataStoreReference_counter,窗口,release,0,1,2,FIFO发生器_customer_0,Task_service
+4.00,DataStoreReference_counter,窗口,allocate,1,0,1,FIFO发生器_customer_1,Task_service
+8.00,DataStoreReference_counter,窗口,release,0,1,1,FIFO发生器_customer_1,Task_service
+8.00,DataStoreReference_counter,窗口,allocate,1,0,0,FIFO发生器_customer_2,Task_service
+12.00,DataStoreReference_counter,窗口,release,0,1,0,FIFO发生器_customer_2,Task_service

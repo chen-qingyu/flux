@@ -1,5 +1,5 @@
 resource_id,resource_name,capacity,busy_time,idle_time,utilization,max_queue_length,average_wait_time,allocation_count,simulation_horizon
-DataStoreReference_joint_j1,J1,1,6.000,1.000,0.857,2,2.000,3,7.000
-DataStoreReference_joint_j2,J2,1,5.000,2.000,0.714,1,1.500,2,7.000
-DataStoreReference_partial_r1,P1,1,6.000,1.000,0.857,2,2.333,3,7.000
-DataStoreReference_partial_r2,P2,1,7.000,0.000,1.000,1,2.500,2,7.000
+DataStoreReference_joint_j1,J1,1,6.00,1.00,0.8571,2,2.00,3,7.00
+DataStoreReference_joint_j2,J2,1,5.00,2.00,0.7143,1,1.50,2,7.00
+DataStoreReference_partial_r1,P1,1,6.00,1.00,0.8571,2,2.33,3,7.00
+DataStoreReference_partial_r2,P2,1,7.00,0.00,1.0000,1,2.50,2,7.00

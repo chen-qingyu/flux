@@ -1,2 +1,2 @@
 resource_id,resource_name,capacity,busy_time,idle_time,utilization,max_queue_length,average_wait_time,allocation_count,simulation_horizon
-DataStoreReference_counter,窗口,1,12.000,0.000,1.000,2,3.000,3,12.000
+DataStoreReference_counter,窗口,1,12.00,0.00,1.0000,2,3.00,3,12.00

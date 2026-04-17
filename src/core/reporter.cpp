@@ -4,13 +4,23 @@
 #include <fstream>
 #include <stdexcept>
 #include <string>
+#include <tuple>
 
+#include <csv.hpp>
 #include <spdlog/spdlog.h>
 
 namespace flux
 {
 namespace
 {
+
+constexpr int TIME_PRECISION = 3;
+constexpr int RATIO_PRECISION = 3;
+
+std::string format_fixed(double value, int precision)
+{
+    return fmt::format("{:.{}f}", value, precision);
+}
 
 std::ofstream open_csv_file(const std::filesystem::path& path)
 {
@@ -34,13 +44,15 @@ std::filesystem::path csv_path(const std::filesystem::path& output_directory, co
 void write_events(const std::filesystem::path& output_directory, const ReportBundle& bundle, const std::string& file_suffix)
 {
     auto stream = open_csv_file(csv_path(output_directory, "events", file_suffix));
+    auto writer = csv::make_csv_writer(stream);
 
-    stream << "time,entity_id,entity_type,node_id,node_name,node_type,event_type\n";
+    writer << std::vector<std::string>{
+        "time", "entity_id", "entity_type", "node_id", "node_name", "node_type", "event_type"};
+
     for (const auto& row : bundle.event_rows)
     {
-        stream << fmt::format(
-            "{:.3f},{},{},{},{},{},{}\n",
-            row.time,
+        writer << std::make_tuple(
+            format_fixed(row.time, TIME_PRECISION),
             row.entity_id,
             row.entity_type,
             row.node_id,
@@ -53,13 +65,15 @@ void write_events(const std::filesystem::path& output_directory, const ReportBun
 void write_resource_timeline(const std::filesystem::path& output_directory, const ReportBundle& bundle, const std::string& file_suffix)
 {
     auto stream = open_csv_file(csv_path(output_directory, "resource_timeline", file_suffix));
+    auto writer = csv::make_csv_writer(stream);
 
-    stream << "time,resource_id,resource_name,change_type,in_use,available,queue_length,entity_id,task_id\n";
+    writer << std::vector<std::string>{
+        "time", "resource_id", "resource_name", "change_type", "in_use", "available", "queue_length", "entity_id", "task_id"};
+
     for (const auto& row : bundle.resource_timeline_rows)
     {
-        stream << fmt::format(
-            "{:.3f},{},{},{},{},{},{},{},{}\n",
-            row.time,
+        writer << std::make_tuple(
+            format_fixed(row.time, TIME_PRECISION),
             row.resource_id,
             row.resource_name,
             row.change_type,
@@ -74,22 +88,24 @@ void write_resource_timeline(const std::filesystem::path& output_directory, cons
 void write_resource_summary(const std::filesystem::path& output_directory, const ReportBundle& bundle, const std::string& file_suffix)
 {
     auto stream = open_csv_file(csv_path(output_directory, "resource_summary", file_suffix));
+    auto writer = csv::make_csv_writer(stream);
 
-    stream << "resource_id,resource_name,capacity,busy_time,idle_time,utilization,max_queue_length,average_wait_time,allocation_count,simulation_horizon\n";
+    writer << std::vector<std::string>{
+        "resource_id", "resource_name", "capacity", "busy_time", "idle_time", "utilization", "max_queue_length", "average_wait_time", "allocation_count", "simulation_horizon"};
+
     for (const auto& row : bundle.resource_summary_rows)
     {
-        stream << fmt::format(
-            "{},{},{},{:.3f},{:.3f},{:.3f},{},{:.3f},{},{:.3f}\n",
+        writer << std::make_tuple(
             row.resource_id,
             row.resource_name,
             row.capacity,
-            row.busy_time,
-            row.idle_time,
-            row.utilization,
+            format_fixed(row.busy_time, TIME_PRECISION),
+            format_fixed(row.idle_time, TIME_PRECISION),
+            format_fixed(row.utilization, RATIO_PRECISION),
             row.max_queue_length,
-            row.average_wait_time,
+            format_fixed(row.average_wait_time, TIME_PRECISION),
             row.allocation_count,
-            row.simulation_horizon);
+            format_fixed(row.simulation_horizon, TIME_PRECISION));
     }
 }
 

@@ -1,0 +1,33 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "debug flux",
+      "type": "cppvsdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/windows/x64/debug/flux.exe",
+      "args": ["${input:file}"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "preLaunchTask": "build debug"
+    },
+    {
+      "name": "debug test",
+      "type": "cppvsdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/windows/x64/debug/test.exe",
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "preLaunchTask": "build debug"
+    }
+  ],
+  "inputs": [
+    {
+      "id": "file",
+      "type": "promptString",
+      "description": "Path to the BPMN file to simulate",
+      "default": "data/demo.bpmn"
+    }
+  ]
+}

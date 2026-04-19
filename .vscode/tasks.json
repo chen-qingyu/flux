@@ -1,0 +1,22 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "config debug",
+      "type": "process",
+      "command": "xmake",
+      "args": ["config", "-m", "debug"],
+      "problemMatcher": []
+    },
+    {
+      "label": "build debug",
+      "type": "process",
+      "command": "xmake",
+      "args": ["build"],
+      "group": "build",
+      "dependsOn": ["config debug"],
+      "dependsOrder": "sequence",
+      "problemMatcher": []
+    }
+  ]
+}

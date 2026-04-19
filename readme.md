@@ -34,7 +34,7 @@ BPMN File -> Parser -> Model (ECS Graph) -> Engine (DOD + EnTT) -> Reporter -> O
 - 输出报表，包括实体事件日志、资源占用时间线、资源利用率等信息
 - 时间是无量纲时间，单位可由用户定义
 
-## 构建和运行
+## 构建运行
 
 构建所有二进制目标：
 
@@ -74,6 +74,13 @@ pip install python/dist/flux-*.whl
 python run.py data/demo.bpmn
 python run.py data/demo.bpmn --seed 42
 ```
+
+### 调试
+
+仓库内提供 VS Code 调试配置： `.vscode/tasks.json` 和 `.vscode/launch.json`。
+
+- `debug flux`：启动主程序调试，启动时会提示输入 BPMN 文件路径，默认值是 `data/demo.bpmn`。
+- `debug test`：启动测试程序调试。
 
 ## 输出文件
 

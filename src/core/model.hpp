@@ -14,7 +14,6 @@ enum class NodeType
     Task,
     EndEvent,
     ExclusiveGateway,
-    ParallelGateway,
 };
 
 enum class DistributionType

@@ -133,16 +133,6 @@ struct PendingCandidateCompare
     }
 };
 
-struct JoinBarrierState
-{
-    std::vector<entt::entity> waiting_tokens;
-};
-
-std::string join_key(const std::string& entity_id, const std::string& node_id)
-{
-    return entity_id + "::" + node_id;
-}
-
 class DistributionSampler
 {
 public:
@@ -492,11 +482,6 @@ public:
     [[nodiscard]] entt::registry& registry()
     {
         return registry_;
-    }
-
-    [[nodiscard]] std::unordered_map<std::string, JoinBarrierState>& join_barriers()
-    {
-        return join_barriers_;
     }
 
     [[nodiscard]] bool has_pending_requests() const
@@ -1058,7 +1043,6 @@ private:
     PendingRequestMap pending_requests_;
     std::priority_queue<PendingCandidate, std::vector<PendingCandidate>, PendingCandidateCompare> pending_candidates_;
     std::unordered_map<std::string, std::vector<std::string>> task_queue_ids_by_resource_;
-    std::unordered_map<std::string, JoinBarrierState> join_barriers_;
     std::unordered_map<std::string, std::deque<entt::entity>> combine_waiting_;
     std::unordered_map<std::string, entt::entity> resource_entities_;
     std::unordered_map<std::string, int> resource_queue_lengths_;
@@ -1074,8 +1058,6 @@ void process_event(RunState& state, const ScheduledEvent& event);
 void handle_generate_entity(RunState& state, const ScheduledEvent& event);
 void handle_arrive_node(RunState& state, const ScheduledEvent& event);
 void handle_finish_task(RunState& state, const ScheduledEvent& event);
-void handle_parallel_gateway(RunState& state, const ScheduledEvent& event);
-void continue_parallel_gateway(RunState& state, const ScheduledEvent& event, std::size_t outgoing_count, entt::entity token_entity);
 std::string select_exclusive_gateway_target(RunState& state, const NodeDefinition& node);
 
 void schedule_start_events(RunState& state)
@@ -1236,11 +1218,6 @@ void handle_arrive_node(RunState& state, const ScheduledEvent& event)
         state.schedule(ScheduledEvent{event.time, state.next_order(), ScheduledEventType::ArriveNode, selected_target, event.token});
         return;
     }
-
-    if (node.type == NodeType::ParallelGateway)
-    {
-        handle_parallel_gateway(state, event);
-    }
 }
 
 void handle_finish_task(RunState& state, const ScheduledEvent& event)
@@ -1336,78 +1313,6 @@ std::string select_exclusive_gateway_target(RunState& state, const NodeDefinitio
     }
 
     return flux::flow(state.model(), flow_ids.back()).target_id;
-}
-
-void handle_parallel_gateway(RunState& state, const ScheduledEvent& event)
-{
-    if (!state.token_valid(event.token))
-    {
-        return;
-    }
-
-    const auto& node = flux::node(state.model(), event.node_id);
-    if (state.token_has_held_resources(event.token))
-    {
-        throw std::runtime_error("Parallel gateway '" + node.id + "' does not support tokens that are holding resources.");
-    }
-
-    const auto token_component = state.token(event.token);
-    const auto incoming_count = state.model().incoming.contains(node.id) ? state.model().incoming.at(node.id).size() : 0U;
-    const auto outgoing_count = state.model().outgoing.contains(node.id) ? state.model().outgoing.at(node.id).size() : 0U;
-
-    if (incoming_count > 1)
-    {
-        auto& barrier = state.join_barriers()[join_key(token_component.entity_id, node.id)];
-        barrier.waiting_tokens.push_back(event.token);
-        if (barrier.waiting_tokens.size() < incoming_count)
-        {
-            state.log_event(event.time, token_component, node, "gateway_join_wait");
-            return;
-        }
-
-        const auto merged_token = state.create_token(token_component.entity_id, token_component.entity_type, token_component.token_id + ".joined", token_component.created_at);
-        state.copy_combine_history(barrier.waiting_tokens.front(), merged_token);
-        for (const auto waiting_token : barrier.waiting_tokens)
-        {
-            state.destroy_token(waiting_token);
-        }
-        barrier.waiting_tokens.clear();
-        state.join_barriers().erase(join_key(token_component.entity_id, node.id));
-
-        state.log_event(event.time, state.token(merged_token), node, "gateway_join_complete");
-        continue_parallel_gateway(state, event, outgoing_count, merged_token);
-        return;
-    }
-
-    continue_parallel_gateway(state, event, outgoing_count, event.token);
-}
-
-void continue_parallel_gateway(RunState& state, const ScheduledEvent& event, std::size_t outgoing_count, entt::entity token_entity)
-{
-    if (outgoing_count == 0)
-    {
-        return;
-    }
-
-    const auto& node = flux::node(state.model(), event.node_id);
-    if (outgoing_count == 1)
-    {
-        state.schedule(ScheduledEvent{event.time, state.next_order(), ScheduledEventType::ArriveNode, state.model().outgoing.at(node.id).front(), token_entity});
-        return;
-    }
-
-    const auto barrier_token = state.token(token_entity);
-    state.log_event(event.time, barrier_token, node, "gateway_fork");
-
-    int branch_index = 0;
-    for (const auto& target_id : state.model().outgoing.at(node.id))
-    {
-        const auto child_token_id = barrier_token.token_id + ".p" + std::to_string(branch_index++);
-        const auto child_token = state.create_token(barrier_token.entity_id, barrier_token.entity_type, child_token_id, barrier_token.created_at);
-        state.copy_combine_history(token_entity, child_token);
-        state.schedule(ScheduledEvent{event.time, state.next_order(), ScheduledEventType::ArriveNode, target_id, child_token});
-    }
-    state.destroy_token(token_entity);
 }
 
 } // namespace

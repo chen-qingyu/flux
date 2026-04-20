@@ -18,7 +18,6 @@ BPMN File -> Parser -> Model (ECS Graph) -> Engine (DOD + EnTT) -> Reporter -> O
 - `task`
 - `endEvent`
 - `exclusiveGateway`
-- `parallelGateway`
 - `dataStoreReference`
 - `sequenceFlow`
 - `association`/`dataInputAssociation`/`dataOutputAssociation`
@@ -30,7 +29,7 @@ BPMN File -> Parser -> Model (ECS Graph) -> Engine (DOD + EnTT) -> Reporter -> O
 - 显式资源生命周期：`acquireResource`、`releaseResource`
 - 合并活动：按比例 `ratio` 进行合并
 - 拆分活动：按比例 `ratio` 进行拆分，或者按最近一次合并记录进行 `restore`
-- 网关语义：`XOR`、`AND`
+- 网关语义：`XOR`
 - 输出报表，包括实体事件日志、资源占用时间线、资源利用率等信息
 - 时间是无量纲时间，单位可由用户定义
 

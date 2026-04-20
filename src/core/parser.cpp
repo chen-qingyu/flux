@@ -507,11 +507,6 @@ private:
             parse_exclusive_gateway(child);
             return;
         }
-        if (type_name == "parallelGateway")
-        {
-            parse_parallel_gateway(child);
-            return;
-        }
         if (type_name == "dataStoreReference")
         {
             parse_resource(child);
@@ -572,15 +567,6 @@ private:
         definition.name = child.attribute("name").value();
         definition.type = NodeType::ExclusiveGateway;
         definition.gateway_criteria = read_optional_gateway_criteria(properties, "Exclusive gateway '" + definition.id + "'");
-        model_.nodes.insert_or_assign(definition.id, std::move(definition));
-    }
-
-    void parse_parallel_gateway(const pugi::xml_node& child)
-    {
-        NodeDefinition definition;
-        definition.id = read_required_attribute(child, "id", "Parallel gateway");
-        definition.name = child.attribute("name").value();
-        definition.type = NodeType::ParallelGateway;
         model_.nodes.insert_or_assign(definition.id, std::move(definition));
     }
 
@@ -812,8 +798,6 @@ private:
                     {
                         throw std::runtime_error("Exclusive gateway '" + node_id + "' uses unsupported routing criteria.");
                     }
-                    [[fallthrough]];
-                case NodeType::ParallelGateway:
                     if (!model_.outgoing.contains(node_id) || model_.outgoing.at(node_id).empty())
                     {
                         throw std::runtime_error("Gateway '" + node_id + "' must have outgoing sequence flow.");

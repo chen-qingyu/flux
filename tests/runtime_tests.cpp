@@ -166,11 +166,10 @@ TEST_CASE("Multisrc runtime stays under three seconds", "[runtime][perf]")
 {
     constexpr double threshold_seconds = 3.0;
 
-    const auto model = flux::test_support::parse_model(std::filesystem::path("data") / "tests" / "multisrc.bpmn");
+    const auto model = flux::Parser::parse(std::filesystem::path("data") / "tests" / "multisrc.bpmn");
 
-    flux::Engine engine;
     const auto started_at = std::chrono::steady_clock::now();
-    const auto result = engine.run(model, 42);
+    const auto result = flux::Engine::run(model, 42);
     const auto finished_at = std::chrono::steady_clock::now();
     const auto elapsed = std::chrono::duration<double>(finished_at - started_at).count();
 

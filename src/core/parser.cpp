@@ -870,7 +870,7 @@ private:
     std::vector<std::pair<std::string, std::string>> associations_;
 };
 
-Model Parser::parse(const std::filesystem::path& file_path) const
+Model Parser::parse(const std::filesystem::path& file_path)
 {
     ParseSession session;
     return session.parse(file_path);

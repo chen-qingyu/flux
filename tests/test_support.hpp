@@ -39,17 +39,10 @@ inline std::string read_text(const std::filesystem::path& path)
     return normalized;
 }
 
-inline Model parse_model(const std::filesystem::path& model_path)
-{
-    Parser parser;
-    return parser.parse(model_path);
-}
-
 inline Result run_model(const std::filesystem::path& model_path, std::uint64_t seed = 42)
 {
-    const auto model = parse_model(model_path);
-    Engine engine;
-    return engine.run(model, seed);
+    const auto model = Parser::parse(model_path);
+    return Engine::run(model, seed);
 }
 
 inline void require_report_matches(const std::filesystem::path& model_path, const std::string& golden_prefix)

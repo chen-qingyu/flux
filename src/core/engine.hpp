@@ -24,20 +24,7 @@ struct Result
 class Engine
 {
 public:
-    Result run(const Model& model, std::uint64_t seed = 42) const;
-
-private:
-    struct ScheduledEvent;
-    class RunState;
-
-    void schedule_start_events(RunState& state) const;
-    void process_event(RunState& state, const ScheduledEvent& event) const;
-    void handle_generate_entity(RunState& state, const ScheduledEvent& event) const;
-    void handle_arrive_node(RunState& state, const ScheduledEvent& event) const;
-    void handle_finish_task(RunState& state, const ScheduledEvent& event) const;
-    void handle_parallel_gateway(RunState& state, const ScheduledEvent& event) const;
-    void continue_parallel_gateway(RunState& state, const ScheduledEvent& event, std::size_t outgoing_count, entt::entity token_entity) const;
-    std::string select_exclusive_gateway_target(RunState& state, const NodeDefinition& node) const;
+    static Result run(const Model& model, std::uint64_t seed = 42);
 };
 
 } // namespace flux

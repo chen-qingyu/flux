@@ -10,7 +10,7 @@ namespace flux
 class Parser
 {
 public:
-    Model parse(const std::filesystem::path& file_path) const;
+    static Model parse(const std::filesystem::path& file_path);
 
 private:
     class ParseSession;

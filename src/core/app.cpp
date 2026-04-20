@@ -24,10 +24,8 @@ void run(const std::string& file_path, std::uint64_t seed)
     spdlog::info("Output directory: {}", output_dir.string());
     spdlog::info("Seed: {}", seed);
 
-    Parser parser;
-    const auto model = parser.parse(input_file);
-    Engine engine;
-    const auto result = engine.run(model, seed);
+    const auto model = Parser::parse(input_file);
+    const auto result = Engine::run(model, seed);
     write_reports(output_dir, result.reports, input_stem);
 
     const auto end_time = std::chrono::steady_clock::now();

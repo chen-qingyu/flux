@@ -190,9 +190,7 @@ private:
     std::mt19937_64 generator_;
 };
 
-} // namespace
-
-struct Engine::ScheduledEvent
+struct ScheduledEvent
 {
     double time{0.0};
     std::uint64_t order{0};
@@ -201,7 +199,7 @@ struct Engine::ScheduledEvent
     entt::entity token{entt::null};
 };
 
-class Engine::RunState
+class RunState
 {
 public:
     RunState(const Model& model, Result& result, std::uint64_t seed)
@@ -1071,31 +1069,16 @@ private:
     bool pending_resolution_needed_{false};
 };
 
-Result Engine::run(const Model& model, std::uint64_t seed) const
-{
-    Result result;
-    RunState state(model, result, seed);
+void schedule_start_events(RunState& state);
+void process_event(RunState& state, const ScheduledEvent& event);
+void handle_generate_entity(RunState& state, const ScheduledEvent& event);
+void handle_arrive_node(RunState& state, const ScheduledEvent& event);
+void handle_finish_task(RunState& state, const ScheduledEvent& event);
+void handle_parallel_gateway(RunState& state, const ScheduledEvent& event);
+void continue_parallel_gateway(RunState& state, const ScheduledEvent& event, std::size_t outgoing_count, entt::entity token_entity);
+std::string select_exclusive_gateway_target(RunState& state, const NodeDefinition& node);
 
-    schedule_start_events(state);
-
-    while (state.has_events())
-    {
-        const auto batch_time = state.next_event_time();
-        // 事件队列按 (time, order) 排序，这里按时间批处理来稳定同一时刻的资源仲裁结果。
-        do
-        {
-            const auto event = state.next_event();
-            process_event(state, event);
-        } while (state.has_events() && state.next_event_time() == batch_time);
-
-        state.resolve_pending(batch_time);
-    }
-
-    state.finalize_resources(result.simulation_horizon);
-    return result;
-}
-
-void Engine::schedule_start_events(RunState& state) const
+void schedule_start_events(RunState& state)
 {
     for (const auto& start_id : state.model().start_node_ids)
     {
@@ -1112,7 +1095,7 @@ void Engine::schedule_start_events(RunState& state) const
     }
 }
 
-void Engine::process_event(RunState& state, const ScheduledEvent& event) const
+void process_event(RunState& state, const ScheduledEvent& event)
 {
     switch (event.type)
     {
@@ -1128,7 +1111,7 @@ void Engine::process_event(RunState& state, const ScheduledEvent& event) const
     }
 }
 
-void Engine::handle_generate_entity(RunState& state, const ScheduledEvent& event) const
+void handle_generate_entity(RunState& state, const ScheduledEvent& event)
 {
     const auto& start_node = flux::node(state.model(), event.node_id);
     const auto entity_id = state.next_entity_id(start_node.name, start_node.generator->entity_type);
@@ -1148,7 +1131,7 @@ void Engine::handle_generate_entity(RunState& state, const ScheduledEvent& event
     }
 }
 
-void Engine::handle_arrive_node(RunState& state, const ScheduledEvent& event) const
+void handle_arrive_node(RunState& state, const ScheduledEvent& event)
 {
     if (!state.token_valid(event.token))
     {
@@ -1260,7 +1243,7 @@ void Engine::handle_arrive_node(RunState& state, const ScheduledEvent& event) co
     }
 }
 
-void Engine::handle_finish_task(RunState& state, const ScheduledEvent& event) const
+void handle_finish_task(RunState& state, const ScheduledEvent& event)
 {
     if (!state.token_valid(event.token) || !state.registry().all_of<ActiveTask>(event.token))
     {
@@ -1316,7 +1299,7 @@ void Engine::handle_finish_task(RunState& state, const ScheduledEvent& event) co
     state.schedule_token_to_outgoing(node.id, event.token, event.time);
 }
 
-std::string Engine::select_exclusive_gateway_target(RunState& state, const NodeDefinition& node) const
+std::string select_exclusive_gateway_target(RunState& state, const NodeDefinition& node)
 {
     if (!node.gateway_criteria.has_value())
     {
@@ -1355,7 +1338,7 @@ std::string Engine::select_exclusive_gateway_target(RunState& state, const NodeD
     return flux::flow(state.model(), flow_ids.back()).target_id;
 }
 
-void Engine::handle_parallel_gateway(RunState& state, const ScheduledEvent& event) const
+void handle_parallel_gateway(RunState& state, const ScheduledEvent& event)
 {
     if (!state.token_valid(event.token))
     {
@@ -1399,7 +1382,7 @@ void Engine::handle_parallel_gateway(RunState& state, const ScheduledEvent& even
     continue_parallel_gateway(state, event, outgoing_count, event.token);
 }
 
-void Engine::continue_parallel_gateway(RunState& state, const ScheduledEvent& event, std::size_t outgoing_count, entt::entity token_entity) const
+void continue_parallel_gateway(RunState& state, const ScheduledEvent& event, std::size_t outgoing_count, entt::entity token_entity)
 {
     if (outgoing_count == 0)
     {
@@ -1425,6 +1408,32 @@ void Engine::continue_parallel_gateway(RunState& state, const ScheduledEvent& ev
         state.schedule(ScheduledEvent{event.time, state.next_order(), ScheduledEventType::ArriveNode, target_id, child_token});
     }
     state.destroy_token(token_entity);
+}
+
+} // namespace
+
+Result Engine::run(const Model& model, std::uint64_t seed)
+{
+    Result result;
+    RunState state(model, result, seed);
+
+    schedule_start_events(state);
+
+    while (state.has_events())
+    {
+        const auto batch_time = state.next_event_time();
+        // 事件队列按 (time, order) 排序，这里按时间批处理来稳定同一时刻的资源仲裁结果。
+        do
+        {
+            const auto event = state.next_event();
+            process_event(state, event);
+        } while (state.has_events() && state.next_event_time() == batch_time);
+
+        state.resolve_pending(batch_time);
+    }
+
+    state.finalize_resources(result.simulation_horizon);
+    return result;
 }
 
 } // namespace flux

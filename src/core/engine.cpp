@@ -189,6 +189,476 @@ struct ScheduledEvent
     entt::entity token{entt::null};
 };
 
+class RunState;
+
+class ResourceManager
+{
+public:
+    explicit ResourceManager(const Model& model)
+        : model_(model)
+    {
+    }
+
+    void initialize(entt::registry& registry)
+    {
+        for (const auto& [resource_id, definition] : model_.resources)
+        {
+            resource_ids_.push_back(resource_id);
+        }
+        std::sort(resource_ids_.begin(), resource_ids_.end());
+
+        for (const auto& resource_id : resource_ids_)
+        {
+            const auto& definition = flux::resource(model_, resource_id);
+            const auto entity = registry.create();
+            registry.emplace<ResourceRuntime>(entity, ResourceRuntime{definition.id, definition.name, definition.capacity, 0, 0.0, 0.0, 0, 0.0, 0});
+            resource_entities_.insert_or_assign(resource_id, entity);
+            resource_queue_lengths_.insert_or_assign(resource_id, 0);
+        }
+    }
+
+    [[nodiscard]] const std::vector<std::string>& task_resources(const std::string& task_id) const
+    {
+        if (const auto found = model_.task_resources.find(task_id); found != model_.task_resources.end())
+        {
+            return found->second;
+        }
+
+        static const std::vector<std::string> empty;
+        return empty;
+    }
+
+    [[nodiscard]] int queue_length_for_resource(const std::string& resource_id) const
+    {
+        if (const auto found = resource_queue_lengths_.find(resource_id); found != resource_queue_lengths_.end())
+        {
+            return found->second;
+        }
+        return 0;
+    }
+
+    [[nodiscard]] std::vector<std::string> allocate_resources_if_possible(
+        entt::registry& registry,
+        const std::string& task_id,
+        const std::optional<ResourceStrategy>& strategy) const
+    {
+        const auto& resource_ids = task_resources(task_id);
+        if (resource_ids.empty())
+        {
+            return {};
+        }
+
+        if (!strategy.has_value())
+        {
+            // 单资源场景允许省略策略，多资源场景必须在解析阶段显式声明。
+            if (resource_ids.size() != 1)
+            {
+                return {};
+            }
+
+            const auto& resource_id = resource_ids.front();
+            const auto& runtime = resource_runtime(registry, resource_id);
+            if (runtime.in_use >= runtime.capacity)
+            {
+                return {};
+            }
+            return {resource_id};
+        }
+
+        if (*strategy == ResourceStrategy::All)
+        {
+            for (const auto& resource_id : resource_ids)
+            {
+                const auto& runtime = resource_runtime(registry, resource_id);
+                if (runtime.in_use >= runtime.capacity)
+                {
+                    return {};
+                }
+            }
+            return resource_ids;
+        }
+
+        if (*strategy == ResourceStrategy::Any)
+        {
+            for (const auto& resource_id : resource_ids)
+            {
+                const auto& runtime = resource_runtime(registry, resource_id);
+                if (runtime.in_use < runtime.capacity)
+                {
+                    return {resource_id};
+                }
+            }
+        }
+
+        return {};
+    }
+
+    void apply_allocation(
+        entt::registry& registry,
+        Result& result,
+        const std::vector<std::string>& resource_ids,
+        double time,
+        double wait_time,
+        const std::string& entity_id,
+        const std::string& task_id)
+    {
+        for (const auto& resource_id : resource_ids)
+        {
+            auto& runtime = resource_runtime(registry, resource_id);
+            const auto queue_length = queue_length_for_resource(resource_id);
+            update_busy_time(runtime, time);
+            ++runtime.in_use;
+            ++runtime.allocation_count;
+            runtime.total_wait_time += wait_time;
+            runtime.max_queue_length = std::max(runtime.max_queue_length, queue_length);
+            log_resource_timeline(result, time, runtime, "allocate", queue_length, entity_id, task_id);
+        }
+    }
+
+    void apply_release(
+        entt::registry& registry,
+        Result& result,
+        const std::vector<std::string>& resource_ids,
+        double time,
+        const std::string& entity_id,
+        const std::string& task_id)
+    {
+        for (const auto& resource_id : resource_ids)
+        {
+            auto& runtime = resource_runtime(registry, resource_id);
+            const auto queue_length = queue_length_for_resource(resource_id);
+            update_busy_time(runtime, time);
+            runtime.in_use = std::max(0, runtime.in_use - 1);
+            runtime.max_queue_length = std::max(runtime.max_queue_length, queue_length);
+            log_resource_timeline(result, time, runtime, "release", queue_length, entity_id, task_id);
+        }
+    }
+
+    void finalize(entt::registry& registry, Result& result, double horizon_s)
+    {
+        for (const auto& resource_id : resource_ids_)
+        {
+            auto& runtime = resource_runtime(registry, resource_id);
+            update_busy_time(runtime, horizon_s);
+
+            const auto capacity_time = static_cast<double>(runtime.capacity) * horizon_s;
+            const auto busy_time = runtime.busy_unit_time;
+            const auto idle_time = std::max(0.0, capacity_time - busy_time);
+            const auto utilization = capacity_time > 0.0 ? busy_time / capacity_time : 0.0;
+            const auto average_wait_time = runtime.allocation_count > 0 ? runtime.total_wait_time / static_cast<double>(runtime.allocation_count) : 0.0;
+
+            result.reports.resource_summary_rows.push_back(ResourceSummaryRow{
+                runtime.resource_id,
+                runtime.resource_name,
+                runtime.capacity,
+                busy_time,
+                idle_time,
+                utilization,
+                runtime.max_queue_length,
+                average_wait_time,
+                runtime.allocation_count,
+                horizon_s,
+            });
+        }
+    }
+
+    void note_request_enqueued(entt::registry& registry, const PendingTaskRequest& request)
+    {
+        for (const auto& resource_id : task_resources(request.task_id))
+        {
+            auto& queue_length = resource_queue_lengths_[resource_id];
+            ++queue_length;
+            auto& runtime = resource_runtime(registry, resource_id);
+            runtime.max_queue_length = std::max(runtime.max_queue_length, queue_length);
+        }
+    }
+
+    void note_request_dequeued(const PendingTaskRequest& request)
+    {
+        for (const auto& resource_id : task_resources(request.task_id))
+        {
+            auto& queue_length = resource_queue_lengths_[resource_id];
+            queue_length = std::max(0, queue_length - 1);
+        }
+    }
+
+private:
+    static void log_resource_timeline(
+        Result& result,
+        double time,
+        const ResourceRuntime& runtime,
+        const std::string& change_type,
+        int queue_length,
+        const std::string& entity_id,
+        const std::string& task_id)
+    {
+        result.reports.resource_timeline_rows.push_back(ResourceTimelineRow{
+            time,
+            runtime.resource_id,
+            runtime.resource_name,
+            change_type,
+            runtime.in_use,
+            runtime.capacity - runtime.in_use,
+            queue_length,
+            entity_id,
+            task_id,
+        });
+    }
+
+    ResourceRuntime& resource_runtime(entt::registry& registry, const std::string& resource_id)
+    {
+        return registry.get<ResourceRuntime>(resource_entities_.at(resource_id));
+    }
+
+    const ResourceRuntime& resource_runtime(entt::registry& registry, const std::string& resource_id) const
+    {
+        return registry.get<ResourceRuntime>(resource_entities_.at(resource_id));
+    }
+
+    static void update_busy_time(ResourceRuntime& runtime, double time)
+    {
+        const auto delta = time - runtime.last_update_time;
+        if (delta > 0.0)
+        {
+            runtime.busy_unit_time += static_cast<double>(runtime.in_use) * delta;
+        }
+        runtime.last_update_time = time;
+    }
+
+    const Model& model_;
+    std::unordered_map<std::string, entt::entity> resource_entities_;
+    std::unordered_map<std::string, int> resource_queue_lengths_;
+    std::vector<std::string> resource_ids_;
+};
+
+class TokenManager
+{
+public:
+    explicit TokenManager(const ResourceManager& resources)
+        : resources_(resources)
+    {
+    }
+
+    [[nodiscard]] bool token_has_held_resources(const entt::registry& registry, entt::entity token_entity) const
+    {
+        return registry.all_of<HeldResources>(token_entity) && !registry.get<HeldResources>(token_entity).resource_ids.empty();
+    }
+
+    [[nodiscard]] bool token_has_combine_history(const entt::registry& registry, entt::entity token_entity) const
+    {
+        return registry.all_of<CombineHistory>(token_entity) && !registry.get<CombineHistory>(token_entity).frames.empty();
+    }
+
+    [[nodiscard]] const std::vector<std::string>& held_resources(const entt::registry& registry, entt::entity token_entity) const
+    {
+        if (registry.all_of<HeldResources>(token_entity))
+        {
+            return registry.get<HeldResources>(token_entity).resource_ids;
+        }
+
+        static const std::vector<std::string> empty;
+        return empty;
+    }
+
+    [[nodiscard]] const CombineHistory& combine_history(const entt::registry& registry, entt::entity token_entity) const
+    {
+        return registry.get<CombineHistory>(token_entity);
+    }
+
+    [[nodiscard]] std::shared_ptr<CombineHistory> snapshot_combine_history(const entt::registry& registry, entt::entity token_entity) const
+    {
+        if (!registry.all_of<CombineHistory>(token_entity))
+        {
+            return nullptr;
+        }
+
+        return std::make_shared<CombineHistory>(registry.get<CombineHistory>(token_entity));
+    }
+
+    [[nodiscard]] RestorableTokenSnapshot snapshot_token(const entt::registry& registry, entt::entity token_entity) const
+    {
+        return RestorableTokenSnapshot{registry.get<ProcessToken>(token_entity), snapshot_combine_history(registry, token_entity)};
+    }
+
+    void copy_combine_history(entt::registry& registry, entt::entity source_token, entt::entity target_token)
+    {
+        if (!registry.all_of<CombineHistory>(source_token))
+        {
+            if (registry.all_of<CombineHistory>(target_token))
+            {
+                registry.remove<CombineHistory>(target_token);
+            }
+            return;
+        }
+
+        registry.emplace_or_replace<CombineHistory>(target_token, registry.get<CombineHistory>(source_token));
+    }
+
+    void restore_snapshot_history(entt::registry& registry, entt::entity token_entity, const std::shared_ptr<CombineHistory>& history)
+    {
+        if (!history)
+        {
+            if (registry.all_of<CombineHistory>(token_entity))
+            {
+                registry.remove<CombineHistory>(token_entity);
+            }
+            return;
+        }
+
+        registry.emplace_or_replace<CombineHistory>(token_entity, *history);
+    }
+
+    [[nodiscard]] entt::entity create_restored_token(RunState& state, const RestorableTokenSnapshot& snapshot);
+
+    void set_combine_history(entt::registry& registry, entt::entity token_entity, std::vector<RestorableTokenSnapshot> members)
+    {
+        registry.emplace_or_replace<CombineHistory>(token_entity, CombineHistory{{CombinedFrame{std::move(members)}}});
+    }
+
+    void schedule_split_outputs(RunState& state, entt::entity token_entity, const NodeDefinition& node, double start_time, double duration);
+
+    void add_held_resources(entt::registry& registry, entt::entity token_entity, const std::vector<std::string>& resource_ids)
+    {
+        if (resource_ids.empty())
+        {
+            return;
+        }
+
+        auto& held = registry.get_or_emplace<HeldResources>(token_entity);
+        held.resource_ids.insert(held.resource_ids.end(), resource_ids.begin(), resource_ids.end());
+        // 保持排序，后续 release 直接用二分判断绑定资源是否被持有。
+        std::sort(held.resource_ids.begin(), held.resource_ids.end());
+    }
+
+    [[nodiscard]] std::vector<std::string> release_resources_for_task(const entt::registry& registry, entt::entity token_entity, const std::string& task_id) const
+    {
+        const auto& currently_held = held_resources(registry, token_entity);
+        if (currently_held.empty())
+        {
+            return {};
+        }
+
+        const auto& bound_resources = resources_.task_resources(task_id);
+        if (bound_resources.empty())
+        {
+            return currently_held;
+        }
+
+        std::vector<std::string> released;
+        released.reserve(currently_held.size());
+        for (const auto& resource_id : currently_held)
+        {
+            if (std::binary_search(bound_resources.begin(), bound_resources.end(), resource_id))
+            {
+                released.push_back(resource_id);
+            }
+        }
+        return released;
+    }
+
+    void remove_held_resources(entt::registry& registry, entt::entity token_entity, const std::vector<std::string>& resource_ids)
+    {
+        if (resource_ids.empty() || !registry.all_of<HeldResources>(token_entity))
+        {
+            return;
+        }
+
+        auto& held = registry.get<HeldResources>(token_entity).resource_ids;
+        for (const auto& resource_id : resource_ids)
+        {
+            const auto found = std::find(held.begin(), held.end(), resource_id);
+            if (found != held.end())
+            {
+                held.erase(found);
+            }
+        }
+
+        if (held.empty())
+        {
+            registry.remove<HeldResources>(token_entity);
+        }
+    }
+
+    void enqueue_combine_member(const std::string& task_id, entt::entity token_entity)
+    {
+        combine_waiting_[task_id].push_back(token_entity);
+    }
+
+    [[nodiscard]] std::vector<entt::entity> take_ready_combine_batch(const entt::registry& registry, const std::string& task_id, std::size_t ratio)
+    {
+        auto found = combine_waiting_.find(task_id);
+        if (found == combine_waiting_.end())
+        {
+            return {};
+        }
+
+        auto& waiting = found->second;
+        while (!waiting.empty() && !(registry.valid(waiting.front()) && registry.all_of<ProcessToken>(waiting.front())))
+        {
+            waiting.pop_front();
+        }
+        if (waiting.size() < ratio)
+        {
+            return {};
+        }
+
+        std::vector<entt::entity> members;
+        members.reserve(ratio);
+        for (std::size_t index = 0; index < ratio; ++index)
+        {
+            members.push_back(waiting.front());
+            waiting.pop_front();
+        }
+        if (waiting.empty())
+        {
+            combine_waiting_.erase(found);
+        }
+        return members;
+    }
+
+private:
+    const ResourceManager& resources_;
+    std::unordered_map<std::string, std::deque<entt::entity>> combine_waiting_;
+};
+
+class PendingManager
+{
+public:
+    explicit PendingManager(const Model& model);
+
+    [[nodiscard]] bool has_requests() const;
+    void note_resolution_needed();
+    void enqueue_request(PendingTaskRequest request, RunState& state);
+    void rearm_resource_queues(const std::string& resource_id);
+    void resolve(RunState& state, double time);
+
+private:
+    using PendingRequestMap = std::unordered_map<PendingQueueKey, std::deque<PendingTaskRequest>, PendingQueueKeyHash>;
+
+    struct PendingCandidateView
+    {
+        PendingQueueKey key;
+        std::vector<std::string> allocation;
+    };
+
+    void initialize_task_queue_index();
+    [[nodiscard]] static PendingQueueKey resource_queue_key(const std::string& resource_id);
+    [[nodiscard]] static PendingQueueKey task_queue_key(const std::string& task_id);
+    [[nodiscard]] PendingQueueKey pending_queue_key_for_task(const std::string& task_id) const;
+    [[nodiscard]] std::optional<PendingCandidateView> next_pending_candidate(RunState& state);
+    void push_pending_candidate(const PendingQueueKey& key, std::uint64_t order);
+    void push_pending_candidate_if_waiting(const PendingQueueKey& key);
+    void discard_invalid_fronts(const PendingQueueKey& key, RunState& state);
+    PendingTaskRequest take_front_request(const PendingQueueKey& key);
+    void start_pending_request(PendingCandidateView candidate, RunState& state, double time);
+
+    const Model& model_;
+    PendingRequestMap pending_requests_;
+    std::priority_queue<PendingCandidate, std::vector<PendingCandidate>, PendingCandidateCompare> pending_candidates_;
+    std::unordered_map<std::string, std::vector<std::string>> task_queue_ids_by_resource_;
+    bool pending_resolution_needed_{false};
+};
+
 class RunState
 {
 public:
@@ -196,9 +666,10 @@ public:
         : model_(model)
         , result_(result)
         , sampler_(seed)
+        , resources_(model)
+        , pending_(model)
     {
-        initialize_resources();
-        initialize_task_queue_index();
+        resources_.initialize(registry_);
     }
 
     void schedule(ScheduledEvent event)
@@ -248,27 +719,6 @@ public:
         return token != entt::null && registry_.valid(token) && registry_.all_of<ProcessToken>(token);
     }
 
-    [[nodiscard]] bool token_has_held_resources(entt::entity token_entity) const
-    {
-        return registry_.all_of<HeldResources>(token_entity) && !registry_.get<HeldResources>(token_entity).resource_ids.empty();
-    }
-
-    [[nodiscard]] bool token_has_combine_history(entt::entity token_entity) const
-    {
-        return registry_.all_of<CombineHistory>(token_entity) && !registry_.get<CombineHistory>(token_entity).frames.empty();
-    }
-
-    [[nodiscard]] const std::vector<std::string>& held_resources(entt::entity token_entity) const
-    {
-        if (registry_.all_of<HeldResources>(token_entity))
-        {
-            return registry_.get<HeldResources>(token_entity).resource_ids;
-        }
-
-        static const std::vector<std::string> empty;
-        return empty;
-    }
-
     [[nodiscard]] const ProcessToken& token(entt::entity entity) const
     {
         return registry_.get<ProcessToken>(entity);
@@ -277,70 +727,6 @@ public:
     ProcessToken& token(entt::entity entity)
     {
         return registry_.get<ProcessToken>(entity);
-    }
-
-    [[nodiscard]] const CombineHistory& combine_history(entt::entity token_entity) const
-    {
-        return registry_.get<CombineHistory>(token_entity);
-    }
-
-    [[nodiscard]] std::shared_ptr<CombineHistory> snapshot_combine_history(entt::entity token_entity) const
-    {
-        if (!registry_.all_of<CombineHistory>(token_entity))
-        {
-            return nullptr;
-        }
-
-        return std::make_shared<CombineHistory>(registry_.get<CombineHistory>(token_entity));
-    }
-
-    [[nodiscard]] RestorableTokenSnapshot snapshot_token(entt::entity token_entity) const
-    {
-        return RestorableTokenSnapshot{token(token_entity), snapshot_combine_history(token_entity)};
-    }
-
-    void copy_combine_history(entt::entity source_token, entt::entity target_token)
-    {
-        if (!registry_.all_of<CombineHistory>(source_token))
-        {
-            if (registry_.all_of<CombineHistory>(target_token))
-            {
-                registry_.remove<CombineHistory>(target_token);
-            }
-            return;
-        }
-
-        registry_.emplace_or_replace<CombineHistory>(target_token, registry_.get<CombineHistory>(source_token));
-    }
-
-    void restore_snapshot_history(entt::entity token_entity, const std::shared_ptr<CombineHistory>& history)
-    {
-        if (!history)
-        {
-            if (registry_.all_of<CombineHistory>(token_entity))
-            {
-                registry_.remove<CombineHistory>(token_entity);
-            }
-            return;
-        }
-
-        registry_.emplace_or_replace<CombineHistory>(token_entity, *history);
-    }
-
-    [[nodiscard]] entt::entity create_restored_token(const RestorableTokenSnapshot& snapshot)
-    {
-        const auto restored = create_token(
-            snapshot.token.entity_id,
-            snapshot.token.entity_type,
-            snapshot.token.token_id,
-            snapshot.token.created_at);
-        restore_snapshot_history(restored, snapshot.history);
-        return restored;
-    }
-
-    void set_combine_history(entt::entity token_entity, std::vector<RestorableTokenSnapshot> members)
-    {
-        registry_.emplace_or_replace<CombineHistory>(token_entity, CombineHistory{{CombinedFrame{std::move(members)}}});
     }
 
     void schedule_token_to_outgoing(const std::string& node_id, entt::entity token_entity, double time)
@@ -354,62 +740,6 @@ public:
         for (const auto& target_id : found->second)
         {
             schedule(ScheduledEvent{time, next_order(), ScheduledEventType::ArriveNode, target_id, token_entity});
-        }
-    }
-
-    void schedule_split_outputs(entt::entity token_entity, const NodeDefinition& node, double start_time, double duration)
-    {
-        if (node.task->type != TaskType::Split)
-        {
-            return;
-        }
-
-        std::vector<entt::entity> outputs;
-        if (node.task->split->method == SplitMethod::Ratio)
-        {
-            outputs.reserve(node.task->split->ratio);
-            for (std::size_t index = 0; index < node.task->split->ratio; ++index)
-            {
-                const auto entity_id = next_entity_id(node.name, node.task->split->entity_type);
-                const auto child = create_token(entity_id, node.task->split->entity_type, entity_id + ".t0", start_time);
-                copy_combine_history(token_entity, child);
-                outputs.push_back(child);
-            }
-        }
-        else
-        {
-            if (!token_has_combine_history(token_entity))
-            {
-                throw std::runtime_error("Task '" + node.id + "' requires a previously combined entity when '_method=restore'.");
-            }
-
-            const auto& history = combine_history(token_entity);
-            const auto& frame = history.frames.back();
-            outputs.reserve(frame.members.size());
-            for (const auto& snapshot : frame.members)
-            {
-                outputs.push_back(create_restored_token(snapshot));
-            }
-        }
-
-        if (outputs.empty())
-        {
-            return;
-        }
-
-        if (node.task->split->one_off)
-        {
-            for (const auto child : outputs)
-            {
-                schedule_token_to_outgoing(node.id, child, start_time + duration);
-            }
-            return;
-        }
-
-        const auto interval = duration / static_cast<double>(outputs.size());
-        for (std::size_t index = 0; index < outputs.size(); ++index)
-        {
-            schedule_token_to_outgoing(node.id, outputs[index], start_time + interval * static_cast<double>(index + 1));
         }
     }
 
@@ -486,169 +816,36 @@ public:
 
     [[nodiscard]] bool has_pending_requests() const
     {
-        return !pending_requests_.empty();
+        return pending_.has_requests();
     }
-
-    [[nodiscard]] const std::vector<std::string>& task_resources(const std::string& task_id) const
-    {
-        if (const auto found = model_.task_resources.find(task_id); found != model_.task_resources.end())
-        {
-            return found->second;
-        }
-        static const std::vector<std::string> empty;
-        return empty;
-    }
-
-    [[nodiscard]] int queue_length_for_resource(const std::string& resource_id) const
-    {
-        if (const auto found = resource_queue_lengths_.find(resource_id); found != resource_queue_lengths_.end())
-        {
-            return found->second;
-        }
-        return 0;
-    }
-
-    [[nodiscard]] std::vector<std::string> allocate_resources_if_possible(const std::string& task_id, const std::optional<ResourceStrategy>& strategy)
-    {
-        const auto& resource_ids = task_resources(task_id);
-        if (resource_ids.empty())
-        {
-            return {};
-        }
-
-        if (!strategy.has_value())
-        {
-            // 单资源场景允许省略策略，多资源场景必须在解析阶段显式声明。
-            if (resource_ids.size() != 1)
-            {
-                return {};
-            }
-
-            const auto& resource_id = resource_ids.front();
-            const auto& runtime = resource_runtime(resource_id);
-            if (runtime.in_use >= runtime.capacity)
-            {
-                return {};
-            }
-            return {resource_id};
-        }
-
-        if (*strategy == ResourceStrategy::All)
-        {
-            for (const auto& resource_id : resource_ids)
-            {
-                const auto& runtime = resource_runtime(resource_id);
-                if (runtime.in_use >= runtime.capacity)
-                {
-                    return {};
-                }
-            }
-            return resource_ids;
-        }
-
-        if (*strategy == ResourceStrategy::Any)
-        {
-            for (const auto& resource_id : resource_ids)
-            {
-                const auto& runtime = resource_runtime(resource_id);
-                if (runtime.in_use < runtime.capacity)
-                {
-                    return {resource_id};
-                }
-            }
-        }
-
-        return {};
-    }
-
-    struct PendingCandidateView
-    {
-        PendingQueueKey key;
-        std::vector<std::string> allocation;
-    };
 
     void apply_allocation(const std::vector<std::string>& resource_ids, double time, double wait_time, const std::string& entity_id, const std::string& task_id)
     {
-        for (const auto& resource_id : resource_ids)
-        {
-            auto& runtime = resource_runtime(resource_id);
-            const auto queue_length = queue_length_for_resource(resource_id);
-            update_busy_time(runtime, time);
-            ++runtime.in_use;
-            ++runtime.allocation_count;
-            runtime.total_wait_time += wait_time;
-            runtime.max_queue_length = std::max(runtime.max_queue_length, queue_length);
-            log_resource_timeline(
-                time,
-                runtime,
-                "allocate",
-                queue_length,
-                entity_id,
-                task_id);
-        }
+        resources_.apply_allocation(registry_, result_, resource_ids, time, wait_time, entity_id, task_id);
     }
 
     void apply_release(const std::vector<std::string>& resource_ids, double time, const std::string& entity_id, const std::string& task_id)
     {
+        resources_.apply_release(registry_, result_, resource_ids, time, entity_id, task_id);
         for (const auto& resource_id : resource_ids)
         {
-            auto& runtime = resource_runtime(resource_id);
-            const auto queue_length = queue_length_for_resource(resource_id);
-            update_busy_time(runtime, time);
-            runtime.in_use = std::max(0, runtime.in_use - 1);
-            runtime.max_queue_length = std::max(runtime.max_queue_length, queue_length);
-            log_resource_timeline(
-                time,
-                runtime,
-                "release",
-                queue_length,
-                entity_id,
-                task_id);
-
-            rearm_resource_queues(resource_id);
+            pending_.rearm_resource_queues(resource_id);
         }
 
         if (has_pending_requests())
         {
-            pending_resolution_needed_ = true;
+            pending_.note_resolution_needed();
         }
     }
 
     void enqueue_request(PendingTaskRequest request)
     {
-        note_request_enqueued(request);
-        pending_resolution_needed_ = true;
-
-        const auto key = pending_queue_key_for_task(request.task_id);
-        auto& requests = pending_requests_[key];
-        const auto was_empty = requests.empty();
-        requests.push_back(std::move(request));
-        if (was_empty)
-        {
-            push_pending_candidate_if_waiting(key);
-        }
+        pending_.enqueue_request(std::move(request), *this);
     }
 
     void resolve_pending(double time)
     {
-        if (!pending_resolution_needed_)
-        {
-            return;
-        }
-
-        pending_resolution_needed_ = false;
-
-        // 同一时间点的事件先全部消费，再统一尝试唤醒等待任务，保证“同一时刻按最老可行请求优先”。
-        while (true)
-        {
-            auto candidate = next_pending_candidate();
-            if (!candidate.has_value())
-            {
-                break;
-            }
-
-            start_pending_request(std::move(*candidate), time);
-        }
+        pending_.resolve(*this, time);
     }
 
     void start_task(entt::entity token_entity, const NodeDefinition& node, double time, const std::vector<std::string>& allocation, double wait_time)
@@ -666,140 +863,16 @@ public:
         schedule(ScheduledEvent{time + duration, next_order(), ScheduledEventType::FinishTask, node.id, token_entity});
         if (node.task->type == TaskType::Split)
         {
-            schedule_split_outputs(token_entity, node, time, duration);
+            tokens_.schedule_split_outputs(*this, token_entity, node, time, duration);
         }
     }
 
     void finalize_resources(double horizon_s)
     {
-        for (const auto& resource_id : resource_ids_)
-        {
-            auto& runtime = resource_runtime(resource_id);
-            update_busy_time(runtime, horizon_s);
-
-            const auto capacity_time = static_cast<double>(runtime.capacity) * horizon_s;
-            const auto busy_time = runtime.busy_unit_time;
-            const auto idle_time = std::max(0.0, capacity_time - busy_time);
-            const auto utilization = capacity_time > 0.0 ? busy_time / capacity_time : 0.0;
-            const auto average_wait_time = runtime.allocation_count > 0 ? runtime.total_wait_time / static_cast<double>(runtime.allocation_count) : 0.0;
-
-            result_.reports.resource_summary_rows.push_back(ResourceSummaryRow{
-                runtime.resource_id,
-                runtime.resource_name,
-                runtime.capacity,
-                busy_time,
-                idle_time,
-                utilization,
-                runtime.max_queue_length,
-                average_wait_time,
-                runtime.allocation_count,
-                horizon_s,
-            });
-        }
-    }
-
-    void add_held_resources(entt::entity token_entity, const std::vector<std::string>& resource_ids)
-    {
-        if (resource_ids.empty())
-        {
-            return;
-        }
-
-        auto& held = registry_.get_or_emplace<HeldResources>(token_entity);
-        held.resource_ids.insert(held.resource_ids.end(), resource_ids.begin(), resource_ids.end());
-        // 保持排序，后续 release 直接用二分判断绑定资源是否被持有。
-        std::sort(held.resource_ids.begin(), held.resource_ids.end());
-    }
-
-    [[nodiscard]] std::vector<std::string> release_resources_for_task(entt::entity token_entity, const std::string& task_id) const
-    {
-        const auto& currently_held = held_resources(token_entity);
-        if (currently_held.empty())
-        {
-            return {};
-        }
-
-        const auto& bound_resources = task_resources(task_id);
-        if (bound_resources.empty())
-        {
-            return currently_held;
-        }
-
-        std::vector<std::string> released;
-        released.reserve(currently_held.size());
-        for (const auto& resource_id : currently_held)
-        {
-            if (std::binary_search(bound_resources.begin(), bound_resources.end(), resource_id))
-            {
-                released.push_back(resource_id);
-            }
-        }
-        return released;
-    }
-
-    void remove_held_resources(entt::entity token_entity, const std::vector<std::string>& resource_ids)
-    {
-        if (resource_ids.empty() || !registry_.all_of<HeldResources>(token_entity))
-        {
-            return;
-        }
-
-        auto& held = registry_.get<HeldResources>(token_entity).resource_ids;
-        for (const auto& resource_id : resource_ids)
-        {
-            const auto found = std::find(held.begin(), held.end(), resource_id);
-            if (found != held.end())
-            {
-                held.erase(found);
-            }
-        }
-
-        if (held.empty())
-        {
-            registry_.remove<HeldResources>(token_entity);
-        }
-    }
-
-    void enqueue_combine_member(const std::string& task_id, entt::entity token_entity)
-    {
-        combine_waiting_[task_id].push_back(token_entity);
-    }
-
-    [[nodiscard]] std::vector<entt::entity> take_ready_combine_batch(const std::string& task_id, std::size_t ratio)
-    {
-        auto found = combine_waiting_.find(task_id);
-        if (found == combine_waiting_.end())
-        {
-            return {};
-        }
-
-        auto& waiting = found->second;
-        while (!waiting.empty() && !token_valid(waiting.front()))
-        {
-            waiting.pop_front();
-        }
-        if (waiting.size() < ratio)
-        {
-            return {};
-        }
-
-        std::vector<entt::entity> members;
-        members.reserve(ratio);
-        for (std::size_t index = 0; index < ratio; ++index)
-        {
-            members.push_back(waiting.front());
-            waiting.pop_front();
-        }
-        if (waiting.empty())
-        {
-            combine_waiting_.erase(found);
-        }
-        return members;
+        resources_.finalize(registry_, result_, horizon_s);
     }
 
 private:
-    using PendingRequestMap = std::unordered_map<PendingQueueKey, std::deque<PendingTaskRequest>, PendingQueueKeyHash>;
-
     struct ScheduledEventCompare
     {
         bool operator()(const ScheduledEvent& left, const ScheduledEvent& right) const
@@ -812,246 +885,322 @@ private:
         }
     };
 
-    void initialize_resources()
-    {
-        for (const auto& [resource_id, definition] : model_.resources)
-        {
-            resource_ids_.push_back(resource_id);
-        }
-        std::sort(resource_ids_.begin(), resource_ids_.end());
-
-        for (const auto& resource_id : resource_ids_)
-        {
-            const auto& definition = flux::resource(model_, resource_id);
-            const auto entity = registry_.create();
-            registry_.emplace<ResourceRuntime>(entity, ResourceRuntime{definition.id, definition.name, definition.capacity, 0, 0.0, 0.0, 0, 0.0, 0});
-            resource_entities_.insert_or_assign(resource_id, entity);
-            resource_queue_lengths_.insert_or_assign(resource_id, 0);
-        }
-    }
-
-    void initialize_task_queue_index()
-    {
-        for (const auto& [task_id, resource_ids] : model_.task_resources)
-        {
-            if (resource_ids.size() <= 1)
-            {
-                continue;
-            }
-
-            for (const auto& resource_id : resource_ids)
-            {
-                // 多资源任务需要在任一相关资源释放时重新入候选堆。
-                task_queue_ids_by_resource_[resource_id].push_back(task_id);
-            }
-        }
-    }
-
     void note_request_enqueued(const PendingTaskRequest& request)
     {
-        for (const auto& resource_id : task_resources(request.task_id))
-        {
-            auto& queue_length = resource_queue_lengths_[resource_id];
-            ++queue_length;
-            auto& runtime = resource_runtime(resource_id);
-            runtime.max_queue_length = std::max(runtime.max_queue_length, queue_length);
-        }
+        resources_.note_request_enqueued(registry_, request);
     }
 
     void note_request_dequeued(const PendingTaskRequest& request)
     {
-        for (const auto& resource_id : task_resources(request.task_id))
-        {
-            auto& queue_length = resource_queue_lengths_[resource_id];
-            queue_length = std::max(0, queue_length - 1);
-        }
-    }
-
-    [[nodiscard]] static PendingQueueKey resource_queue_key(const std::string& resource_id)
-    {
-        return PendingQueueKey{PendingQueueScope::Resource, resource_id};
-    }
-
-    [[nodiscard]] static PendingQueueKey task_queue_key(const std::string& task_id)
-    {
-        return PendingQueueKey{PendingQueueScope::Task, task_id};
-    }
-
-    [[nodiscard]] PendingQueueKey pending_queue_key_for_task(const std::string& task_id) const
-    {
-        const auto& resource_ids = task_resources(task_id);
-        if (resource_ids.size() == 1)
-        {
-            // 单资源等待队列直接挂在资源上，多资源等待队列挂在任务自身上。
-            return resource_queue_key(resource_ids.front());
-        }
-
-        return task_queue_key(task_id);
-    }
-
-    void rearm_resource_queues(const std::string& resource_id)
-    {
-        push_pending_candidate_if_waiting(resource_queue_key(resource_id));
-
-        const auto found = task_queue_ids_by_resource_.find(resource_id);
-        if (found == task_queue_ids_by_resource_.end())
-        {
-            return;
-        }
-
-        for (const auto& task_id : found->second)
-        {
-            push_pending_candidate_if_waiting(task_queue_key(task_id));
-        }
-    }
-
-    [[nodiscard]] std::optional<PendingCandidateView> next_pending_candidate()
-    {
-        while (!pending_candidates_.empty())
-        {
-            const auto candidate = pending_candidates_.top();
-
-            // 候选堆允许旧条目残留，通过惰性清理避免在 release 路径上全量扫描。
-            discard_invalid_fronts(candidate.key);
-
-            const auto found = pending_requests_.find(candidate.key);
-            if (found == pending_requests_.end())
-            {
-                pending_candidates_.pop();
-                continue;
-            }
-
-            const auto& request = found->second.front();
-            if (request.order != candidate.order)
-            {
-                pending_candidates_.pop();
-                continue;
-            }
-
-            const auto& node = flux::node(model_, request.task_id);
-            auto allocation = allocate_resources_if_possible(request.task_id, node.task->resource_strategy);
-            if (allocation.empty())
-            {
-                pending_candidates_.pop();
-                continue;
-            }
-
-            return PendingCandidateView{candidate.key, std::move(allocation)};
-        }
-
-        return std::nullopt;
-    }
-
-    void push_pending_candidate(const PendingQueueKey& key, std::uint64_t order)
-    {
-        pending_candidates_.push(PendingCandidate{order, key});
-    }
-
-    void push_pending_candidate_if_waiting(const PendingQueueKey& key)
-    {
-        const auto found = pending_requests_.find(key);
-        if (found == pending_requests_.end() || found->second.empty())
-        {
-            return;
-        }
-
-        push_pending_candidate(key, found->second.front().order);
-    }
-
-    void discard_invalid_fronts(const PendingQueueKey& key)
-    {
-        const auto found = pending_requests_.find(key);
-        if (found == pending_requests_.end())
-        {
-            return;
-        }
-
-        auto& requests = found->second;
-        auto removed_any = false;
-        while (!requests.empty() && !token_valid(requests.front().token))
-        {
-            note_request_dequeued(requests.front());
-            requests.pop_front();
-            removed_any = true;
-        }
-
-        if (requests.empty())
-        {
-            pending_requests_.erase(found);
-            return;
-        }
-
-        if (removed_any)
-        {
-            push_pending_candidate(key, requests.front().order);
-        }
-    }
-
-    PendingTaskRequest take_front_request(const PendingQueueKey& key)
-    {
-        auto& requests = pending_requests_.at(key);
-        auto request = std::move(requests.front());
-        requests.pop_front();
-        pending_candidates_.pop();
-
-        if (requests.empty())
-        {
-            pending_requests_.erase(key);
-        }
-        else
-        {
-            push_pending_candidate(key, requests.front().order);
-        }
-
-        return request;
-    }
-
-    void start_pending_request(PendingCandidateView candidate, double time)
-    {
-        auto request = take_front_request(candidate.key);
-
-        const auto& node = flux::node(model_, request.task_id);
-        note_request_dequeued(request);
-        start_task(request.token, node, time, candidate.allocation, time - request.arrival_time);
-    }
-
-    ResourceRuntime& resource_runtime(const std::string& resource_id)
-    {
-        return registry_.get<ResourceRuntime>(resource_entities_.at(resource_id));
-    }
-
-    const ResourceRuntime& resource_runtime(const std::string& resource_id) const
-    {
-        return registry_.get<ResourceRuntime>(resource_entities_.at(resource_id));
-    }
-
-    void update_busy_time(ResourceRuntime& runtime, double time)
-    {
-        const auto delta = time - runtime.last_update_time;
-        if (delta > 0.0)
-        {
-            runtime.busy_unit_time += static_cast<double>(runtime.in_use) * delta;
-        }
-        runtime.last_update_time = time;
+        resources_.note_request_dequeued(request);
     }
 
     entt::registry registry_;
     const Model& model_;
     Result& result_;
     DistributionSampler sampler_;
+    ResourceManager resources_;
+    TokenManager tokens_{resources_};
+    PendingManager pending_;
     std::priority_queue<ScheduledEvent, std::vector<ScheduledEvent>, ScheduledEventCompare> queue_;
-    PendingRequestMap pending_requests_;
-    std::priority_queue<PendingCandidate, std::vector<PendingCandidate>, PendingCandidateCompare> pending_candidates_;
-    std::unordered_map<std::string, std::vector<std::string>> task_queue_ids_by_resource_;
-    std::unordered_map<std::string, std::deque<entt::entity>> combine_waiting_;
-    std::unordered_map<std::string, entt::entity> resource_entities_;
-    std::unordered_map<std::string, int> resource_queue_lengths_;
-    std::vector<std::string> resource_ids_;
     double current_time_{0.0};
     std::uint64_t next_order_{0};
     std::size_t business_sequence_{0};
-    bool pending_resolution_needed_{false};
+
+    friend class PendingManager;
+    friend class TokenManager;
+    friend void schedule_start_events(RunState& state);
+    friend void process_event(RunState& state, const ScheduledEvent& event);
+    friend void handle_generate_entity(RunState& state, const ScheduledEvent& event);
+    friend void handle_arrive_node(RunState& state, const ScheduledEvent& event);
+    friend void handle_finish_task(RunState& state, const ScheduledEvent& event);
+    friend std::string select_exclusive_gateway_target(RunState& state, const NodeDefinition& node);
 };
+
+entt::entity TokenManager::create_restored_token(RunState& state, const RestorableTokenSnapshot& snapshot)
+{
+    const auto restored = state.create_token(
+        snapshot.token.entity_id,
+        snapshot.token.entity_type,
+        snapshot.token.token_id,
+        snapshot.token.created_at);
+    restore_snapshot_history(state.registry_, restored, snapshot.history);
+    return restored;
+}
+
+void TokenManager::schedule_split_outputs(RunState& state, entt::entity token_entity, const NodeDefinition& node, double start_time, double duration)
+{
+    if (node.task->type != TaskType::Split)
+    {
+        return;
+    }
+
+    std::vector<entt::entity> outputs;
+    if (node.task->split->method == SplitMethod::Ratio)
+    {
+        outputs.reserve(node.task->split->ratio);
+        for (std::size_t index = 0; index < node.task->split->ratio; ++index)
+        {
+            const auto entity_id = state.next_entity_id(node.name, node.task->split->entity_type);
+            const auto child = state.create_token(entity_id, node.task->split->entity_type, entity_id + ".t0", start_time);
+            copy_combine_history(state.registry_, token_entity, child);
+            outputs.push_back(child);
+        }
+    }
+    else
+    {
+        if (!token_has_combine_history(state.registry_, token_entity))
+        {
+            throw std::runtime_error("Task '" + node.id + "' requires a previously combined entity when '_method=restore'.");
+        }
+
+        const auto& history = combine_history(state.registry_, token_entity);
+        const auto& frame = history.frames.back();
+        outputs.reserve(frame.members.size());
+        for (const auto& snapshot : frame.members)
+        {
+            outputs.push_back(create_restored_token(state, snapshot));
+        }
+    }
+
+    if (outputs.empty())
+    {
+        return;
+    }
+
+    if (node.task->split->one_off)
+    {
+        for (const auto child : outputs)
+        {
+            state.schedule_token_to_outgoing(node.id, child, start_time + duration);
+        }
+        return;
+    }
+
+    const auto interval = duration / static_cast<double>(outputs.size());
+    for (std::size_t index = 0; index < outputs.size(); ++index)
+    {
+        state.schedule_token_to_outgoing(node.id, outputs[index], start_time + interval * static_cast<double>(index + 1));
+    }
+}
+
+PendingManager::PendingManager(const Model& model)
+    : model_(model)
+{
+    initialize_task_queue_index();
+}
+
+bool PendingManager::has_requests() const
+{
+    return !pending_requests_.empty();
+}
+
+void PendingManager::note_resolution_needed()
+{
+    pending_resolution_needed_ = true;
+}
+
+void PendingManager::enqueue_request(PendingTaskRequest request, RunState& state)
+{
+    state.note_request_enqueued(request);
+    pending_resolution_needed_ = true;
+
+    const auto key = pending_queue_key_for_task(request.task_id);
+    auto& requests = pending_requests_[key];
+    const auto was_empty = requests.empty();
+    requests.push_back(std::move(request));
+    if (was_empty)
+    {
+        push_pending_candidate_if_waiting(key);
+    }
+}
+
+void PendingManager::rearm_resource_queues(const std::string& resource_id)
+{
+    push_pending_candidate_if_waiting(resource_queue_key(resource_id));
+
+    const auto found = task_queue_ids_by_resource_.find(resource_id);
+    if (found == task_queue_ids_by_resource_.end())
+    {
+        return;
+    }
+
+    for (const auto& task_id : found->second)
+    {
+        push_pending_candidate_if_waiting(task_queue_key(task_id));
+    }
+}
+
+void PendingManager::resolve(RunState& state, double time)
+{
+    if (!pending_resolution_needed_)
+    {
+        return;
+    }
+
+    pending_resolution_needed_ = false;
+
+    // 同一时间点的事件先全部消费，再统一尝试唤醒等待任务，保证“同一时刻按最老可行请求优先”。
+    while (true)
+    {
+        auto candidate = next_pending_candidate(state);
+        if (!candidate.has_value())
+        {
+            break;
+        }
+
+        start_pending_request(std::move(*candidate), state, time);
+    }
+}
+
+void PendingManager::initialize_task_queue_index()
+{
+    for (const auto& [task_id, resource_ids] : model_.task_resources)
+    {
+        if (resource_ids.size() <= 1)
+        {
+            continue;
+        }
+
+        for (const auto& resource_id : resource_ids)
+        {
+            // 多资源任务需要在任一相关资源释放时重新入候选堆。
+            task_queue_ids_by_resource_[resource_id].push_back(task_id);
+        }
+    }
+}
+
+PendingQueueKey PendingManager::resource_queue_key(const std::string& resource_id)
+{
+    return PendingQueueKey{PendingQueueScope::Resource, resource_id};
+}
+
+PendingQueueKey PendingManager::task_queue_key(const std::string& task_id)
+{
+    return PendingQueueKey{PendingQueueScope::Task, task_id};
+}
+
+PendingQueueKey PendingManager::pending_queue_key_for_task(const std::string& task_id) const
+{
+    const auto found = model_.task_resources.find(task_id);
+    if (found != model_.task_resources.end() && found->second.size() == 1)
+    {
+        // 单资源等待队列直接挂在资源上，多资源等待队列挂在任务自身上。
+        return resource_queue_key(found->second.front());
+    }
+
+    return task_queue_key(task_id);
+}
+
+std::optional<PendingManager::PendingCandidateView> PendingManager::next_pending_candidate(RunState& state)
+{
+    while (!pending_candidates_.empty())
+    {
+        const auto candidate = pending_candidates_.top();
+
+        // 候选堆允许旧条目残留，通过惰性清理避免在 release 路径上全量扫描。
+        discard_invalid_fronts(candidate.key, state);
+
+        const auto found = pending_requests_.find(candidate.key);
+        if (found == pending_requests_.end())
+        {
+            pending_candidates_.pop();
+            continue;
+        }
+
+        const auto& request = found->second.front();
+        if (request.order != candidate.order)
+        {
+            pending_candidates_.pop();
+            continue;
+        }
+
+        const auto& node = flux::node(model_, request.task_id);
+        auto allocation = state.resources_.allocate_resources_if_possible(state.registry_, request.task_id, node.task->resource_strategy);
+        if (allocation.empty())
+        {
+            pending_candidates_.pop();
+            continue;
+        }
+
+        return PendingCandidateView{candidate.key, std::move(allocation)};
+    }
+
+    return std::nullopt;
+}
+
+void PendingManager::push_pending_candidate(const PendingQueueKey& key, std::uint64_t order)
+{
+    pending_candidates_.push(PendingCandidate{order, key});
+}
+
+void PendingManager::push_pending_candidate_if_waiting(const PendingQueueKey& key)
+{
+    const auto found = pending_requests_.find(key);
+    if (found == pending_requests_.end() || found->second.empty())
+    {
+        return;
+    }
+
+    push_pending_candidate(key, found->second.front().order);
+}
+
+void PendingManager::discard_invalid_fronts(const PendingQueueKey& key, RunState& state)
+{
+    const auto found = pending_requests_.find(key);
+    if (found == pending_requests_.end())
+    {
+        return;
+    }
+
+    auto& requests = found->second;
+    auto removed_any = false;
+    while (!requests.empty() && !state.token_valid(requests.front().token))
+    {
+        state.note_request_dequeued(requests.front());
+        requests.pop_front();
+        removed_any = true;
+    }
+
+    if (requests.empty())
+    {
+        pending_requests_.erase(found);
+        return;
+    }
+
+    if (removed_any)
+    {
+        push_pending_candidate(key, requests.front().order);
+    }
+}
+
+PendingTaskRequest PendingManager::take_front_request(const PendingQueueKey& key)
+{
+    auto& requests = pending_requests_.at(key);
+    auto request = std::move(requests.front());
+    requests.pop_front();
+    pending_candidates_.pop();
+
+    if (requests.empty())
+    {
+        pending_requests_.erase(key);
+    }
+    else
+    {
+        push_pending_candidate(key, requests.front().order);
+    }
+
+    return request;
+}
+
+void PendingManager::start_pending_request(PendingCandidateView candidate, RunState& state, double time)
+{
+    auto request = take_front_request(candidate.key);
+
+    const auto& node = flux::node(model_, request.task_id);
+    state.note_request_dequeued(request);
+    state.start_task(request.token, node, time, candidate.allocation, time - request.arrival_time);
+}
 
 void schedule_start_events(RunState& state);
 void process_event(RunState& state, const ScheduledEvent& event);
@@ -1125,18 +1274,18 @@ void handle_arrive_node(RunState& state, const ScheduledEvent& event)
 
     if (node.type == NodeType::Task)
     {
-        const auto& requested_resources = state.task_resources(node.id);
+        const auto& requested_resources = state.resources_.task_resources(node.id);
         state.log_event(event.time, token_component, node, "task_arrive");
 
-        if ((node.task->type == TaskType::Combine || node.task->type == TaskType::Split) && state.token_has_held_resources(event.token))
+        if ((node.task->type == TaskType::Combine || node.task->type == TaskType::Split) && state.tokens_.token_has_held_resources(state.registry_, event.token))
         {
             throw std::runtime_error("Task '" + node.id + "' does not support tokens that are holding resources.");
         }
 
         if (node.task->type == TaskType::Combine)
         {
-            state.enqueue_combine_member(node.id, event.token);
-            const auto members = state.take_ready_combine_batch(node.id, node.task->combine->ratio);
+            state.tokens_.enqueue_combine_member(node.id, event.token);
+            const auto members = state.tokens_.take_ready_combine_batch(state.registry_, node.id, node.task->combine->ratio);
             if (members.empty())
             {
                 return;
@@ -1146,13 +1295,13 @@ void handle_arrive_node(RunState& state, const ScheduledEvent& event)
             snapshots.reserve(members.size());
             for (const auto member : members)
             {
-                snapshots.push_back(state.snapshot_token(member));
+                snapshots.push_back(state.tokens_.snapshot_token(state.registry_, member));
             }
 
             const auto entity_id = state.next_entity_id(node.name, node.task->combine->entity_type);
             const auto batch_token = state.create_token(entity_id, node.task->combine->entity_type, entity_id + ".t0", event.time);
             state.registry().emplace<CombineBatch>(batch_token, CombineBatch{members});
-            state.set_combine_history(batch_token, std::move(snapshots));
+            state.tokens_.set_combine_history(state.registry_, batch_token, std::move(snapshots));
 
             if (requested_resources.empty())
             {
@@ -1162,7 +1311,7 @@ void handle_arrive_node(RunState& state, const ScheduledEvent& event)
 
             if (!state.has_pending_requests())
             {
-                const auto allocation = state.allocate_resources_if_possible(node.id, node.task->resource_strategy);
+                const auto allocation = state.resources_.allocate_resources_if_possible(state.registry_, node.id, node.task->resource_strategy);
                 if (!allocation.empty())
                 {
                     state.start_task(batch_token, node, event.time, allocation, 0.0);
@@ -1177,7 +1326,7 @@ void handle_arrive_node(RunState& state, const ScheduledEvent& event)
 
         if (node.task->type == TaskType::ReleaseResource)
         {
-            state.start_task(event.token, node, event.time, state.release_resources_for_task(event.token, node.id), 0.0);
+            state.start_task(event.token, node, event.time, state.tokens_.release_resources_for_task(state.registry_, event.token, node.id), 0.0);
             return;
         }
 
@@ -1190,7 +1339,7 @@ void handle_arrive_node(RunState& state, const ScheduledEvent& event)
         if (!state.has_pending_requests())
         {
             // 没有历史等待者时允许直接抢占；一旦存在等待队列，必须走统一仲裁路径。
-            const auto allocation = state.allocate_resources_if_possible(node.id, node.task->resource_strategy);
+            const auto allocation = state.resources_.allocate_resources_if_possible(state.registry_, node.id, node.task->resource_strategy);
             if (!allocation.empty())
             {
                 state.start_task(event.token, node, event.time, allocation, 0.0);
@@ -1249,12 +1398,12 @@ void handle_finish_task(RunState& state, const ScheduledEvent& event)
     }
     else if (node.task->type == TaskType::AcquireResource)
     {
-        state.add_held_resources(event.token, active_task.allocated_resources);
+        state.tokens_.add_held_resources(state.registry_, event.token, active_task.allocated_resources);
     }
     else if (node.task->type == TaskType::ReleaseResource)
     {
         state.apply_release(active_task.allocated_resources, event.time, token_component.entity_id, node.id);
-        state.remove_held_resources(event.token, active_task.allocated_resources);
+        state.tokens_.remove_held_resources(state.registry_, event.token, active_task.allocated_resources);
     }
     else if (node.task->type == TaskType::Split)
     {

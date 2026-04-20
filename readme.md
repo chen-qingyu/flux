@@ -221,6 +221,4 @@ tests/
 
 ## 实现说明
 
-引擎本质上是一个离散事件模拟器。核心事件按 `(time, order)` 排序进入优先队列，等待资源的请求则通过统一的 pending queue 和候选最小堆做仲裁，在同一时间戳末尾按 "oldest feasible first at the same timestamp" 语义统一分配。
-
-完整的实现说明、机制解释，以及手推时间线示例，见 [docs/engine-note.md](docs/engine-note.md)。
+完整的实现说明和引擎结构见 [docs/engine-note.md](docs/engine-note.md)。

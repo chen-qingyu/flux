@@ -4,16 +4,14 @@
 
 ### 设计原则
 
-引擎本质上是一个离散事件模拟器。核心事件按 `(time, order)` 排序进入优先队列，`time` 决定仿真时间推进，`order` 保证同一时间戳内执行顺序稳定且可复现。开始事件负责生成实体，任务事件负责申请和释放资源，网关事件负责分支与汇合。
-
-资源等待采用 `oldest feasible first at the same timestamp` 语义。直观地说，系统会先处理完同一时间戳内的所有原始事件，再统一判断等待中的请求里谁现在真的能启动：更老但暂时还不满足资源条件的请求，不会挡住后面已经可行的请求；而如果多个请求在这一时刻都可行，则仍按更早的请求顺序启动。这样既保持了结果稳定，也让 FIFO 行为更容易理解和验证。
+引擎本质上是一个离散事件模拟器。核心事件按 `(time, order)` 排序进入优先队列，等待资源的请求则通过统一的 pending queue 和候选最小堆做仲裁，在同一时间戳末尾按 "oldest feasible first at the same timestamp" 语义统一分配。
 
 ### 关键做法
 
 - 队列 key 分成两类：只需要一种资源的请求按资源建队列，需要多种资源的请求按任务建队列。这样既统一了控制流，又保留了释放时的定点唤醒性能。
 - 资源释放时不会扫描全部等待请求，而是只重挂两个方向的队首：当前资源自己的资源队列队首，以及通过“资源 -> 相关任务队列”反向索引找到的受影响任务队列队首。这就是为什么释放时不用扫描全世界。
 - 候选仲裁统一到一个最小堆里。堆键是请求顺序 `order`，并且只有当候选真正浮到堆顶时，才检查 token 是否已失效、队首是否已变化、当前资源是否真的可分配。
-- 同一时间戳的等待分配统一在批次末尾触发，这保证了 `oldest feasible first at the same timestamp` 语义。
+- 同一时间戳的等待分配统一在批次末尾触发，这保证了 "oldest feasible first at the same timestamp" 语义。
 
 这个实现里统一的是一套框架和流程，没有统一成“全都按一个维度分组”，原因很直接：
 
@@ -29,9 +27,124 @@
 - 第一层：很多条等待队列
 - 第二层：每条队列的队首代表组成一个候选堆
 
+## 引擎结构
+
+当前实现按四个角色组织：
+
+- `RunState`：负责事件队列、调度顺序，以及把资源、token、等待仲裁三块状态串成一条主流程。
+- `ResourceManager`：负责资源运行态、分配与释放、队列长度、占用时间和汇总统计。
+- `TokenManager`：负责 token 生命周期、held resources、combine 历史快照，以及 split 时的恢复和派生。
+- `PendingManager`：负责等待队列、候选堆、受影响队列重挂，以及同一时间戳末尾的统一仲裁。
+
+## 主流程
+
+主流程可以按下面这条线来理解：
+
+1. `Engine::run` 先创建 `RunState`，初始化资源运行态，并调度所有开始事件。
+2. 事件按 `(time, order)` 从优先队列里取出；同一时间戳的事件会作为一个批次一起处理。
+3. `GenerateEntity` 负责创建 token，并把它送到开始事件的下游节点。
+4. `ArriveNode` 负责判断 token 到达的是任务、结束事件还是网关；如果是任务，再决定直接启动、进入等待，还是走 combine / release-resource 这些特殊路径。
+5. `FinishTask` 负责释放资源、更新 held resources 或 combine 状态、记录完成事件，再把 token 调度到下游。
+6. 每个时间批次的原始事件处理完以后，才统一执行一次 `resolve_pending`，这就是 "oldest feasible first at the same timestamp" 语义的保证。
+
 ## 核心名词
 
-### `PendingTaskRequest`
+### `ResourceManager`
+
+**`ResourceRuntime`**
+
+`ResourceRuntime` 表示一个资源在仿真过程里的实时状态。
+
+里面最关键的是这些字段：
+
+- `capacity`：容量上限。
+- `in_use`：当前正在占用多少容量。
+- `busy_unit_time`：累计忙碌时间，用来算利用率。
+- `max_queue_length`：这个资源参与等待时观察到的最大排队长度。
+- `total_wait_time` 和 `allocation_count`：后面一起用来算平均等待时间。
+
+可以把它理解成资源侧的一本运行账。
+
+**`resource_entities_`**
+
+`resource_entities_` 是资源 id 到 registry entity 的映射。
+
+`ResourceManager` 自己不直接存整份 `ResourceRuntime`，而是通过这个映射去 registry 里取资源组件。这样资源状态仍然统一放在同一个 ECS 容器里。
+
+**`resource_queue_lengths_`**
+
+`resource_queue_lengths_` 记录每个资源当前关联的等待长度。
+
+注意这里不是“资源自己的队列长度”这么简单，而是“所有涉及这个资源的等待请求总共给它带来的排队长度”。后面做 timeline 和 max queue length 统计时，都要依赖这份计数。
+
+**`allocate_resources_if_possible`**
+
+`allocate_resources_if_possible` 表示“按当前资源状态，判断一个任务现在能不能真正拿到资源”。
+
+它只负责一件事：检查可分配性并返回这次应该拿到哪些资源，不负责真正落账。
+
+**`apply_allocation` / `apply_release`**
+
+这两个函数负责把资源状态真正写进去。
+
+- `apply_allocation`：增加 `in_use`，累计等待时间，写 allocation timeline。
+- `apply_release`：减少 `in_use`，更新 busy time，写 release timeline。
+
+也就是说：
+
+- `allocate_resources_if_possible` 负责“能不能拿”
+- `apply_allocation` / `apply_release` 负责“拿到了以后怎么记账”
+
+**`finalize`**
+
+`finalize` 在仿真结束时统一产出资源汇总。
+
+它会把 busy time、idle time、utilization 这些指标整理成最终的报告。
+
+### `TokenManager`
+
+**`ProcessToken`**
+
+`ProcessToken` 表示流程实体当前对应的 token 本体。
+
+里面记录的是实体 id、实体类型、token id 和创建时间。可以把它理解成“流程里正在流动的那张卡片”。
+
+**`HeldResources`**
+
+`HeldResources` 表示这个 token 当前手上还持有着哪些资源。
+
+这份集合主要给 `acquireResource` / `releaseResource` 这类任务使用。它的重点是“资源现在仍然被这个 token 持有”。
+
+**`CombineHistory`**
+
+`CombineHistory` 表示 combine 之后保留下来的历史快照。
+
+它是为了后面的 split，尤其是 `_method=restore` 时，能够把原来参与 combine 的成员重新恢复出来。
+
+**`CombineBatch`**
+
+`CombineBatch` 表示当前这个 batch token 是由哪些成员 token 合成出来的。
+
+它主要服务于 combine 任务完成后的销毁逻辑：batch 结束以后，原来那批成员 token 需要一起清掉。
+
+**`snapshot_token` / `create_restored_token`**
+
+这一对函数负责 combine / split 之间最关键的那段数据传递：
+
+- `snapshot_token` 把 token 及其 combine 历史拍成一个可恢复快照。
+- `create_restored_token` 把这个快照重新变回一个真实 token。
+
+可以把它理解成“保存现场”和“恢复现场”。
+
+**`schedule_split_outputs`**
+
+`schedule_split_outputs` 负责 split 任务生成下游 token 的具体细节。
+
+如果是 `_method=ratio`，它会直接派生新的子 token；如果是 `_method=restore`，它会从 combine 历史里把原成员恢复出来。之后再按 `one_off` 或均匀间隔把这些输出送往下游。
+
+### `PendingManager`
+
+**`PendingTaskRequest`**
 
 `PendingTaskRequest` 表示一个“正在等待资源的请求”。
 
@@ -44,7 +157,7 @@
 
 可以把它理解成一张排队小票。
 
-### `PendingQueueScope`
+**`PendingQueueScope`**
 
 `PendingQueueScope` 表示“这条等待队列是按什么维度组织的”。
 
@@ -53,7 +166,7 @@
 - `Resource`：按资源建队列。
 - `Task`：按任务建队列。
 
-### PendingQueueKey
+**`PendingQueueKey`**
 
 `PendingQueueKey` 是等待队列的地址。
 
@@ -69,7 +182,7 @@
 
 `PendingQueueKey` 表示“请求该进哪条队”。
 
-### `pending_requests_`
+**`pending_requests_`**
 
 `pending_requests_` 是所有等待队列的大仓库：
 
@@ -78,7 +191,7 @@
 
 也就是说，系统里同时会有很多条等待队列，而不是所有请求混在一条总队列里。
 
-### `pending_queue_key_for_task`
+**`pending_queue_key_for_task`**
 
 `pending_queue_key_for_task(task_id)` 的作用是：给一个任务，决定它该进哪种队列。
 
@@ -89,7 +202,7 @@
 
 本质上就是一个“分桶器”。
 
-### `PendingCandidate`
+**`PendingCandidate`**
 
 `PendingCandidate` 表示某条队列当前派出来参加竞争的“队首代表”。
 
@@ -100,7 +213,7 @@
 
 系统不会让每条队列里的所有请求都进候选堆，只会让队首进。这样堆更小，也更容易维护。
 
-### `pending_candidates_`
+**`pending_candidates_`**
 
 `pending_candidates_` 是候选最小堆。
 
@@ -114,7 +227,7 @@
 - `pending_requests_` 存的是全部排队请求
 - `pending_candidates_` 存的是每条队列的当前代表
 
-### `task_queue_ids_by_resource_`
+**`task_queue_ids_by_resource_`**
 
 `task_queue_ids_by_resource_` 是一个反向索引。
 
@@ -126,7 +239,7 @@
 
 表示只要 `R1` 状态变了，`Task_A` 和 `Task_B` 这两条任务队列就值得重新评估。
 
-### `rearm_resource_queues`
+**`rearm_resource_queues`**
 
 `rearm` 是“重新挂回待检查状态”的意思。
 
@@ -139,7 +252,7 @@
 
 这就是“定点唤醒”的意思：只通知受影响的队列，不通知无关队列。
 
-### `next_pending_candidate`
+**`next_pending_candidate`**
 
 `next_pending_candidate()` 表示“从候选堆里找出下一个真正可以启动的请求”。
 
@@ -154,7 +267,7 @@
 
 这里的关键点是：更老的请求先看，但如果更老的请求此刻依然不可行，也不会把后面可行的请求永远堵死。
 
-### `take_front_request`
+**`take_front_request`**
 
 `take_front_request` 表示把队首请求真正取出来。
 
@@ -166,9 +279,9 @@
 
 这很像窗口叫到号以后，第一位出列，第二位补到最前面。
 
-## 完整链路
+## 手推时间线
 
-下面用一个具体时间线，把这几个动作连起来看一次。
+下面用一个具体时间线，把仲裁动作连起来看一次。
 
 场景如下：
 

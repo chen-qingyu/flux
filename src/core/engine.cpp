@@ -616,11 +616,33 @@ private:
 class Engine::PendingManager
 {
 public:
-    explicit PendingManager(const Model& model);
+    explicit PendingManager(const Model& model)
+        : model_(model)
+    {
+        initialize_task_queue_index();
+    }
 
-    [[nodiscard]] bool has_requests() const;
-    [[nodiscard]] bool begin_resolution();
-    void note_resolution_needed();
+    [[nodiscard]] bool has_requests() const
+    {
+        return !pending_requests_.empty();
+    }
+
+    [[nodiscard]] bool begin_resolution()
+    {
+        if (!pending_resolution_needed_)
+        {
+            return false;
+        }
+
+        pending_resolution_needed_ = false;
+        return true;
+    }
+
+    void note_resolution_needed()
+    {
+        pending_resolution_needed_ = true;
+    }
+
     void enqueue_request(PendingTaskRequest request, entt::registry& registry, ResourceManager& resources);
     void rearm_resource_queues(const std::string& resource_id);
     struct ReadyRequest
@@ -641,12 +663,45 @@ private:
     };
 
     void initialize_task_queue_index();
-    [[nodiscard]] static PendingQueueKey resource_queue_key(const std::string& resource_id);
-    [[nodiscard]] static PendingQueueKey task_queue_key(const std::string& task_id);
-    [[nodiscard]] PendingQueueKey pending_queue_key_for_task(const std::string& task_id) const;
+    [[nodiscard]] static PendingQueueKey resource_queue_key(const std::string& resource_id)
+    {
+        return PendingQueueKey{PendingQueueScope::Resource, resource_id};
+    }
+
+    [[nodiscard]] static PendingQueueKey task_queue_key(const std::string& task_id)
+    {
+        return PendingQueueKey{PendingQueueScope::Task, task_id};
+    }
+
+    [[nodiscard]] PendingQueueKey pending_queue_key_for_task(const std::string& task_id) const
+    {
+        const auto found = model_.task_resources.find(task_id);
+        if (found != model_.task_resources.end() && found->second.size() == 1)
+        {
+            // 单资源等待队列直接挂在资源上，多资源等待队列挂在任务自身上。
+            return resource_queue_key(found->second.front());
+        }
+
+        return task_queue_key(task_id);
+    }
+
     [[nodiscard]] std::optional<PendingCandidateView> next_pending_candidate(entt::registry& registry, ResourceManager& resources);
-    void push_pending_candidate(const PendingQueueKey& key, std::uint64_t order);
-    void push_pending_candidate_if_waiting(const PendingQueueKey& key);
+    void push_pending_candidate(const PendingQueueKey& key, std::uint64_t order)
+    {
+        pending_candidates_.push(PendingCandidate{order, key});
+    }
+
+    void push_pending_candidate_if_waiting(const PendingQueueKey& key)
+    {
+        const auto found = pending_requests_.find(key);
+        if (found == pending_requests_.end() || found->second.empty())
+        {
+            return;
+        }
+
+        push_pending_candidate(key, found->second.front().order);
+    }
+
     void discard_invalid_fronts(const PendingQueueKey& key, entt::registry& registry, ResourceManager& resources);
     PendingTaskRequest take_front_request(const PendingQueueKey& key);
 
@@ -829,6 +884,7 @@ private:
 
     [[nodiscard]] std::string select_exclusive_gateway_target(const NodeDefinition& node);
     [[nodiscard]] entt::entity create_restored_token(const RestorableTokenSnapshot& snapshot);
+    void start_or_enqueue_task(entt::entity token_entity, const NodeDefinition& node, double time);
     void schedule_split_outputs(entt::entity token_entity, const NodeDefinition& node, double start_time, double duration);
 
     struct ScheduledEventCompare
@@ -855,33 +911,6 @@ private:
     std::uint64_t next_order_{0};
     std::size_t business_sequence_{0};
 };
-
-Engine::PendingManager::PendingManager(const Model& model)
-    : model_(model)
-{
-    initialize_task_queue_index();
-}
-
-bool Engine::PendingManager::has_requests() const
-{
-    return !pending_requests_.empty();
-}
-
-bool Engine::PendingManager::begin_resolution()
-{
-    if (!pending_resolution_needed_)
-    {
-        return false;
-    }
-
-    pending_resolution_needed_ = false;
-    return true;
-}
-
-void Engine::PendingManager::note_resolution_needed()
-{
-    pending_resolution_needed_ = true;
-}
 
 void Engine::PendingManager::enqueue_request(PendingTaskRequest request, entt::registry& registry, ResourceManager& resources)
 {
@@ -944,28 +973,6 @@ void Engine::PendingManager::initialize_task_queue_index()
     }
 }
 
-PendingQueueKey Engine::PendingManager::resource_queue_key(const std::string& resource_id)
-{
-    return PendingQueueKey{PendingQueueScope::Resource, resource_id};
-}
-
-PendingQueueKey Engine::PendingManager::task_queue_key(const std::string& task_id)
-{
-    return PendingQueueKey{PendingQueueScope::Task, task_id};
-}
-
-PendingQueueKey Engine::PendingManager::pending_queue_key_for_task(const std::string& task_id) const
-{
-    const auto found = model_.task_resources.find(task_id);
-    if (found != model_.task_resources.end() && found->second.size() == 1)
-    {
-        // 单资源等待队列直接挂在资源上，多资源等待队列挂在任务自身上。
-        return resource_queue_key(found->second.front());
-    }
-
-    return task_queue_key(task_id);
-}
-
 std::optional<Engine::PendingManager::PendingCandidateView> Engine::PendingManager::next_pending_candidate(entt::registry& registry, ResourceManager& resources)
 {
     while (!pending_candidates_.empty())
@@ -1002,23 +1009,6 @@ std::optional<Engine::PendingManager::PendingCandidateView> Engine::PendingManag
 
     return std::nullopt;
 }
-
-void Engine::PendingManager::push_pending_candidate(const PendingQueueKey& key, std::uint64_t order)
-{
-    pending_candidates_.push(PendingCandidate{order, key});
-}
-
-void Engine::PendingManager::push_pending_candidate_if_waiting(const PendingQueueKey& key)
-{
-    const auto found = pending_requests_.find(key);
-    if (found == pending_requests_.end() || found->second.empty())
-    {
-        return;
-    }
-
-    push_pending_candidate(key, found->second.front().order);
-}
-
 void Engine::PendingManager::discard_invalid_fronts(const PendingQueueKey& key, entt::registry& registry, ResourceManager& resources)
 {
     const auto found = pending_requests_.find(key);
@@ -1076,6 +1066,30 @@ entt::entity Engine::RunState::create_restored_token(const RestorableTokenSnapsh
         snapshot.token.created_at);
     tokens_.restore_snapshot_history(registry_, restored, snapshot.history);
     return restored;
+}
+
+void Engine::RunState::start_or_enqueue_task(entt::entity token_entity, const NodeDefinition& node, double time)
+{
+    const auto& requested_resources = resources_.task_resources(node.id);
+    if (requested_resources.empty())
+    {
+        start_task(token_entity, node, time, {}, 0.0);
+        return;
+    }
+
+    if (!pending_.has_requests())
+    {
+        // 没有历史等待者时允许直接抢占；一旦存在等待队列，必须走统一仲裁路径。
+        const auto allocation = resources_.allocate_resources_if_possible(registry_, node.id, node.task->resource_strategy);
+        if (!allocation.empty())
+        {
+            start_task(token_entity, node, time, allocation, 0.0);
+            return;
+        }
+    }
+
+    pending_.enqueue_request(PendingTaskRequest{next_order(), token_entity, node.id, time}, registry_, resources_);
+    log_event(time, token(token_entity), node, "task_waiting_for_resources");
 }
 
 void Engine::RunState::schedule_split_outputs(entt::entity token_entity, const NodeDefinition& node, double start_time, double duration)
@@ -1199,7 +1213,6 @@ void Engine::RunState::handle_arrive_node(const ScheduledEvent& event)
 
     if (node.type == NodeType::Task)
     {
-        const auto& requested_resources = resources_.task_resources(node.id);
         log_event(event.time, token_component, node, "task_arrive");
 
         if ((node.task->type == TaskType::Combine || node.task->type == TaskType::Split) && tokens_.token_has_held_resources(registry_, event.token))
@@ -1228,24 +1241,7 @@ void Engine::RunState::handle_arrive_node(const ScheduledEvent& event)
             registry_.emplace<CombineBatch>(batch_token, CombineBatch{members});
             tokens_.set_combine_history(registry_, batch_token, std::move(snapshots));
 
-            if (requested_resources.empty())
-            {
-                start_task(batch_token, node, event.time, {}, 0.0);
-                return;
-            }
-
-            if (!pending_.has_requests())
-            {
-                const auto allocation = resources_.allocate_resources_if_possible(registry_, node.id, node.task->resource_strategy);
-                if (!allocation.empty())
-                {
-                    start_task(batch_token, node, event.time, allocation, 0.0);
-                    return;
-                }
-            }
-
-            pending_.enqueue_request(PendingTaskRequest{next_order(), batch_token, node.id, event.time}, registry_, resources_);
-            log_event(event.time, token(batch_token), node, "task_waiting_for_resources");
+            start_or_enqueue_task(batch_token, node, event.time);
             return;
         }
 
@@ -1255,25 +1251,7 @@ void Engine::RunState::handle_arrive_node(const ScheduledEvent& event)
             return;
         }
 
-        if (requested_resources.empty())
-        {
-            start_task(event.token, node, event.time, {}, 0.0);
-            return;
-        }
-
-        if (!pending_.has_requests())
-        {
-            // 没有历史等待者时允许直接抢占；一旦存在等待队列，必须走统一仲裁路径。
-            const auto allocation = resources_.allocate_resources_if_possible(registry_, node.id, node.task->resource_strategy);
-            if (!allocation.empty())
-            {
-                start_task(event.token, node, event.time, allocation, 0.0);
-                return;
-            }
-        }
-
-        pending_.enqueue_request(PendingTaskRequest{next_order(), event.token, node.id, event.time}, registry_, resources_);
-        log_event(event.time, token_component, node, "task_waiting_for_resources");
+        start_or_enqueue_task(event.token, node, event.time);
         return;
     }
 
@@ -1304,13 +1282,20 @@ void Engine::RunState::handle_finish_task(const ScheduledEvent& event)
     const auto& node = flux::node(model_, event.node_id);
     const auto token_component = token(event.token);
     const auto active_task = registry_.get<ActiveTask>(event.token);
-    if (node.task->type == TaskType::Delay || node.task->type == TaskType::Transport)
+    const auto task_type = node.task->type;
+    const auto releases_allocation = task_type == TaskType::Delay ||
+                                     task_type == TaskType::Transport ||
+                                     task_type == TaskType::Combine ||
+                                     task_type == TaskType::ReleaseResource ||
+                                     task_type == TaskType::Split;
+
+    if (releases_allocation)
     {
         apply_release(active_task.allocated_resources, event.time, token_component.entity_id, node.id);
     }
-    else if (node.task->type == TaskType::Combine)
+
+    if (task_type == TaskType::Combine)
     {
-        apply_release(active_task.allocated_resources, event.time, token_component.entity_id, node.id);
         if (registry_.all_of<CombineBatch>(event.token))
         {
             const auto members = registry_.get<CombineBatch>(event.token).members;
@@ -1321,27 +1306,23 @@ void Engine::RunState::handle_finish_task(const ScheduledEvent& event)
             registry_.remove<CombineBatch>(event.token);
         }
     }
-    else if (node.task->type == TaskType::AcquireResource)
+    else if (task_type == TaskType::AcquireResource)
     {
         tokens_.add_held_resources(registry_, event.token, active_task.allocated_resources);
     }
-    else if (node.task->type == TaskType::ReleaseResource)
+    else if (task_type == TaskType::ReleaseResource)
     {
-        apply_release(active_task.allocated_resources, event.time, token_component.entity_id, node.id);
         tokens_.remove_held_resources(registry_, event.token, active_task.allocated_resources);
     }
-    else if (node.task->type == TaskType::Split)
-    {
-        apply_release(active_task.allocated_resources, event.time, token_component.entity_id, node.id);
-    }
-    if (node.task->type == TaskType::Transport)
+
+    if (task_type == TaskType::Transport)
     {
         result_.total_transport_distance += node.task->distance;
     }
     log_event(event.time, token_component, node, "task_finish");
     registry_.remove<ActiveTask>(event.token);
 
-    if (node.task->type == TaskType::Split)
+    if (task_type == TaskType::Split)
     {
         destroy_token(event.token);
         return;

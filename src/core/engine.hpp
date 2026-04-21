@@ -25,6 +25,12 @@ class Engine
 {
 public:
     static Result run(const Model& model, std::uint64_t seed = 42);
+
+private:
+    class RunState;
+    class ResourceManager;
+    class TokenManager;
+    class PendingManager;
 };
 
 } // namespace flux

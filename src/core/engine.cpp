@@ -22,8 +22,6 @@
 
 namespace flux
 {
-namespace
-{
 
 enum class ScheduledEventType
 {
@@ -189,9 +187,7 @@ struct ScheduledEvent
     entt::entity token{entt::null};
 };
 
-class RunState;
-
-class ResourceManager
+class Engine::ResourceManager
 {
 public:
     explicit ResourceManager(const Model& model)
@@ -431,7 +427,7 @@ private:
     std::vector<std::string> resource_ids_;
 };
 
-class TokenManager
+class Engine::TokenManager
 {
 public:
     explicit TokenManager(const ResourceManager& resources)
@@ -508,14 +504,10 @@ public:
         registry.emplace_or_replace<CombineHistory>(token_entity, *history);
     }
 
-    [[nodiscard]] entt::entity create_restored_token(RunState& state, const RestorableTokenSnapshot& snapshot);
-
     void set_combine_history(entt::registry& registry, entt::entity token_entity, std::vector<RestorableTokenSnapshot> members)
     {
         registry.emplace_or_replace<CombineHistory>(token_entity, CombineHistory{{CombinedFrame{std::move(members)}}});
     }
-
-    void schedule_split_outputs(RunState& state, entt::entity token_entity, const NodeDefinition& node, double start_time, double duration);
 
     void add_held_resources(entt::registry& registry, entt::entity token_entity, const std::vector<std::string>& resource_ids)
     {
@@ -621,16 +613,23 @@ private:
     std::unordered_map<std::string, std::deque<entt::entity>> combine_waiting_;
 };
 
-class PendingManager
+class Engine::PendingManager
 {
 public:
     explicit PendingManager(const Model& model);
 
     [[nodiscard]] bool has_requests() const;
+    [[nodiscard]] bool begin_resolution();
     void note_resolution_needed();
-    void enqueue_request(PendingTaskRequest request, RunState& state);
+    void enqueue_request(PendingTaskRequest request, entt::registry& registry, ResourceManager& resources);
     void rearm_resource_queues(const std::string& resource_id);
-    void resolve(RunState& state, double time);
+    struct ReadyRequest
+    {
+        PendingTaskRequest request;
+        std::vector<std::string> allocation;
+    };
+
+    [[nodiscard]] std::optional<ReadyRequest> next_ready_request(entt::registry& registry, ResourceManager& resources);
 
 private:
     using PendingRequestMap = std::unordered_map<PendingQueueKey, std::deque<PendingTaskRequest>, PendingQueueKeyHash>;
@@ -645,12 +644,11 @@ private:
     [[nodiscard]] static PendingQueueKey resource_queue_key(const std::string& resource_id);
     [[nodiscard]] static PendingQueueKey task_queue_key(const std::string& task_id);
     [[nodiscard]] PendingQueueKey pending_queue_key_for_task(const std::string& task_id) const;
-    [[nodiscard]] std::optional<PendingCandidateView> next_pending_candidate(RunState& state);
+    [[nodiscard]] std::optional<PendingCandidateView> next_pending_candidate(entt::registry& registry, ResourceManager& resources);
     void push_pending_candidate(const PendingQueueKey& key, std::uint64_t order);
     void push_pending_candidate_if_waiting(const PendingQueueKey& key);
-    void discard_invalid_fronts(const PendingQueueKey& key, RunState& state);
+    void discard_invalid_fronts(const PendingQueueKey& key, entt::registry& registry, ResourceManager& resources);
     PendingTaskRequest take_front_request(const PendingQueueKey& key);
-    void start_pending_request(PendingCandidateView candidate, RunState& state, double time);
 
     const Model& model_;
     PendingRequestMap pending_requests_;
@@ -659,7 +657,7 @@ private:
     bool pending_resolution_needed_{false};
 };
 
-class RunState
+class Engine::RunState
 {
 public:
     RunState(const Model& model, Result& result, std::uint64_t seed)
@@ -670,11 +668,6 @@ public:
         , pending_(model)
     {
         resources_.initialize(registry_);
-    }
-
-    void schedule(ScheduledEvent event)
-    {
-        queue_.push(std::move(event));
     }
 
     [[nodiscard]] bool has_events() const
@@ -694,6 +687,43 @@ public:
         current_time_ = std::max(current_time_, event.time);
         result_.simulation_horizon = std::max(result_.simulation_horizon, current_time_);
         return event;
+    }
+
+    void resolve_pending(double time)
+    {
+        if (!pending_.begin_resolution())
+        {
+            return;
+        }
+
+        while (true)
+        {
+            auto ready = pending_.next_ready_request(registry_, resources_);
+            if (!ready.has_value())
+            {
+                break;
+            }
+
+            const auto& node = flux::node(model_, ready->request.task_id);
+            start_task(ready->request.token, node, time, ready->allocation, time - ready->request.arrival_time);
+        }
+    }
+
+    void finalize_resources(double horizon_s)
+    {
+        resources_.finalize(registry_, result_, horizon_s);
+    }
+
+    void schedule_start_events();
+    void process_event(const ScheduledEvent& event);
+    void handle_generate_entity(const ScheduledEvent& event);
+    void handle_arrive_node(const ScheduledEvent& event);
+    void handle_finish_task(const ScheduledEvent& event);
+
+private:
+    void schedule(ScheduledEvent event)
+    {
+        queue_.push(std::move(event));
     }
 
     [[nodiscard]] std::uint64_t next_order()
@@ -778,11 +808,6 @@ public:
         }
     }
 
-    void resolve_pending(double time)
-    {
-        pending_.resolve(*this, time);
-    }
-
     void start_task(entt::entity token_entity, const NodeDefinition& node, double time, const std::vector<std::string>& allocation, double wait_time)
     {
         const auto& token_component = token(token_entity);
@@ -798,16 +823,14 @@ public:
         schedule(ScheduledEvent{time + duration, next_order(), ScheduledEventType::FinishTask, node.id, token_entity});
         if (node.task->type == TaskType::Split)
         {
-            tokens_.schedule_split_outputs(*this, token_entity, node, time, duration);
+            schedule_split_outputs(token_entity, node, time, duration);
         }
     }
 
-    void finalize_resources(double horizon_s)
-    {
-        resources_.finalize(registry_, result_, horizon_s);
-    }
+    [[nodiscard]] std::string select_exclusive_gateway_target(const NodeDefinition& node);
+    [[nodiscard]] entt::entity create_restored_token(const RestorableTokenSnapshot& snapshot);
+    void schedule_split_outputs(entt::entity token_entity, const NodeDefinition& node, double start_time, double duration);
 
-private:
     struct ScheduledEventCompare
     {
         bool operator()(const ScheduledEvent& left, const ScheduledEvent& right) const
@@ -824,110 +847,45 @@ private:
     const Model& model_;
     Result& result_;
     DistributionSampler sampler_;
-    ResourceManager resources_;
-    TokenManager tokens_{resources_};
-    PendingManager pending_;
+    Engine::ResourceManager resources_;
+    Engine::TokenManager tokens_{resources_};
+    Engine::PendingManager pending_;
     std::priority_queue<ScheduledEvent, std::vector<ScheduledEvent>, ScheduledEventCompare> queue_;
     double current_time_{0.0};
     std::uint64_t next_order_{0};
     std::size_t business_sequence_{0};
-
-    friend class PendingManager;
-    friend class TokenManager;
-    friend void schedule_start_events(RunState& state);
-    friend void process_event(RunState& state, const ScheduledEvent& event);
-    friend void handle_generate_entity(RunState& state, const ScheduledEvent& event);
-    friend void handle_arrive_node(RunState& state, const ScheduledEvent& event);
-    friend void handle_finish_task(RunState& state, const ScheduledEvent& event);
-    friend std::string select_exclusive_gateway_target(RunState& state, const NodeDefinition& node);
 };
 
-entt::entity TokenManager::create_restored_token(RunState& state, const RestorableTokenSnapshot& snapshot)
-{
-    const auto restored = state.create_token(
-        snapshot.token.entity_id,
-        snapshot.token.entity_type,
-        snapshot.token.token_id,
-        snapshot.token.created_at);
-    restore_snapshot_history(state.registry_, restored, snapshot.history);
-    return restored;
-}
-
-void TokenManager::schedule_split_outputs(RunState& state, entt::entity token_entity, const NodeDefinition& node, double start_time, double duration)
-{
-    if (node.task->type != TaskType::Split)
-    {
-        return;
-    }
-
-    std::vector<entt::entity> outputs;
-    if (node.task->split->method == SplitMethod::Ratio)
-    {
-        outputs.reserve(node.task->split->ratio);
-        for (std::size_t index = 0; index < node.task->split->ratio; ++index)
-        {
-            const auto entity_id = state.next_entity_id(node.name, node.task->split->entity_type);
-            const auto child = state.create_token(entity_id, node.task->split->entity_type, entity_id + ".t0", start_time);
-            copy_combine_history(state.registry_, token_entity, child);
-            outputs.push_back(child);
-        }
-    }
-    else
-    {
-        if (!token_has_combine_history(state.registry_, token_entity))
-        {
-            throw std::runtime_error("Task '" + node.id + "' requires a previously combined entity when '_method=restore'.");
-        }
-
-        const auto& history = combine_history(state.registry_, token_entity);
-        const auto& frame = history.frames.back();
-        outputs.reserve(frame.members.size());
-        for (const auto& snapshot : frame.members)
-        {
-            outputs.push_back(create_restored_token(state, snapshot));
-        }
-    }
-
-    if (outputs.empty())
-    {
-        return;
-    }
-
-    if (node.task->split->one_off)
-    {
-        for (const auto child : outputs)
-        {
-            state.schedule_token_to_outgoing(node.id, child, start_time + duration);
-        }
-        return;
-    }
-
-    const auto interval = duration / static_cast<double>(outputs.size());
-    for (std::size_t index = 0; index < outputs.size(); ++index)
-    {
-        state.schedule_token_to_outgoing(node.id, outputs[index], start_time + interval * static_cast<double>(index + 1));
-    }
-}
-
-PendingManager::PendingManager(const Model& model)
+Engine::PendingManager::PendingManager(const Model& model)
     : model_(model)
 {
     initialize_task_queue_index();
 }
 
-bool PendingManager::has_requests() const
+bool Engine::PendingManager::has_requests() const
 {
     return !pending_requests_.empty();
 }
 
-void PendingManager::note_resolution_needed()
+bool Engine::PendingManager::begin_resolution()
+{
+    if (!pending_resolution_needed_)
+    {
+        return false;
+    }
+
+    pending_resolution_needed_ = false;
+    return true;
+}
+
+void Engine::PendingManager::note_resolution_needed()
 {
     pending_resolution_needed_ = true;
 }
 
-void PendingManager::enqueue_request(PendingTaskRequest request, RunState& state)
+void Engine::PendingManager::enqueue_request(PendingTaskRequest request, entt::registry& registry, ResourceManager& resources)
 {
-    state.resources_.note_request_enqueued(state.registry_, request);
+    resources.note_request_enqueued(registry, request);
     pending_resolution_needed_ = true;
 
     const auto key = pending_queue_key_for_task(request.task_id);
@@ -940,7 +898,7 @@ void PendingManager::enqueue_request(PendingTaskRequest request, RunState& state
     }
 }
 
-void PendingManager::rearm_resource_queues(const std::string& resource_id)
+void Engine::PendingManager::rearm_resource_queues(const std::string& resource_id)
 {
     push_pending_candidate_if_waiting(resource_queue_key(resource_id));
 
@@ -956,29 +914,20 @@ void PendingManager::rearm_resource_queues(const std::string& resource_id)
     }
 }
 
-void PendingManager::resolve(RunState& state, double time)
+std::optional<Engine::PendingManager::ReadyRequest> Engine::PendingManager::next_ready_request(entt::registry& registry, ResourceManager& resources)
 {
-    if (!pending_resolution_needed_)
+    auto candidate = next_pending_candidate(registry, resources);
+    if (!candidate.has_value())
     {
-        return;
+        return std::nullopt;
     }
 
-    pending_resolution_needed_ = false;
-
-    // 同一时间点的事件先全部消费，再统一尝试唤醒等待任务，保证“同一时刻按最老可行请求优先”。
-    while (true)
-    {
-        auto candidate = next_pending_candidate(state);
-        if (!candidate.has_value())
-        {
-            break;
-        }
-
-        start_pending_request(std::move(*candidate), state, time);
-    }
+    auto request = take_front_request(candidate->key);
+    resources.note_request_dequeued(request);
+    return ReadyRequest{std::move(request), std::move(candidate->allocation)};
 }
 
-void PendingManager::initialize_task_queue_index()
+void Engine::PendingManager::initialize_task_queue_index()
 {
     for (const auto& [task_id, resource_ids] : model_.task_resources)
     {
@@ -995,17 +944,17 @@ void PendingManager::initialize_task_queue_index()
     }
 }
 
-PendingQueueKey PendingManager::resource_queue_key(const std::string& resource_id)
+PendingQueueKey Engine::PendingManager::resource_queue_key(const std::string& resource_id)
 {
     return PendingQueueKey{PendingQueueScope::Resource, resource_id};
 }
 
-PendingQueueKey PendingManager::task_queue_key(const std::string& task_id)
+PendingQueueKey Engine::PendingManager::task_queue_key(const std::string& task_id)
 {
     return PendingQueueKey{PendingQueueScope::Task, task_id};
 }
 
-PendingQueueKey PendingManager::pending_queue_key_for_task(const std::string& task_id) const
+PendingQueueKey Engine::PendingManager::pending_queue_key_for_task(const std::string& task_id) const
 {
     const auto found = model_.task_resources.find(task_id);
     if (found != model_.task_resources.end() && found->second.size() == 1)
@@ -1017,14 +966,14 @@ PendingQueueKey PendingManager::pending_queue_key_for_task(const std::string& ta
     return task_queue_key(task_id);
 }
 
-std::optional<PendingManager::PendingCandidateView> PendingManager::next_pending_candidate(RunState& state)
+std::optional<Engine::PendingManager::PendingCandidateView> Engine::PendingManager::next_pending_candidate(entt::registry& registry, ResourceManager& resources)
 {
     while (!pending_candidates_.empty())
     {
         const auto candidate = pending_candidates_.top();
 
         // 候选堆允许旧条目残留，通过惰性清理避免在 release 路径上全量扫描。
-        discard_invalid_fronts(candidate.key, state);
+        discard_invalid_fronts(candidate.key, registry, resources);
 
         const auto found = pending_requests_.find(candidate.key);
         if (found == pending_requests_.end())
@@ -1041,7 +990,7 @@ std::optional<PendingManager::PendingCandidateView> PendingManager::next_pending
         }
 
         const auto& node = flux::node(model_, request.task_id);
-        auto allocation = state.resources_.allocate_resources_if_possible(state.registry_, request.task_id, node.task->resource_strategy);
+        auto allocation = resources.allocate_resources_if_possible(registry, request.task_id, node.task->resource_strategy);
         if (allocation.empty())
         {
             pending_candidates_.pop();
@@ -1054,12 +1003,12 @@ std::optional<PendingManager::PendingCandidateView> PendingManager::next_pending
     return std::nullopt;
 }
 
-void PendingManager::push_pending_candidate(const PendingQueueKey& key, std::uint64_t order)
+void Engine::PendingManager::push_pending_candidate(const PendingQueueKey& key, std::uint64_t order)
 {
     pending_candidates_.push(PendingCandidate{order, key});
 }
 
-void PendingManager::push_pending_candidate_if_waiting(const PendingQueueKey& key)
+void Engine::PendingManager::push_pending_candidate_if_waiting(const PendingQueueKey& key)
 {
     const auto found = pending_requests_.find(key);
     if (found == pending_requests_.end() || found->second.empty())
@@ -1070,7 +1019,7 @@ void PendingManager::push_pending_candidate_if_waiting(const PendingQueueKey& ke
     push_pending_candidate(key, found->second.front().order);
 }
 
-void PendingManager::discard_invalid_fronts(const PendingQueueKey& key, RunState& state)
+void Engine::PendingManager::discard_invalid_fronts(const PendingQueueKey& key, entt::registry& registry, ResourceManager& resources)
 {
     const auto found = pending_requests_.find(key);
     if (found == pending_requests_.end())
@@ -1080,9 +1029,9 @@ void PendingManager::discard_invalid_fronts(const PendingQueueKey& key, RunState
 
     auto& requests = found->second;
     auto removed_any = false;
-    while (!requests.empty() && !state.token_valid(requests.front().token))
+    while (!requests.empty() && !(registry.valid(requests.front().token) && registry.all_of<ProcessToken>(requests.front().token)))
     {
-        state.resources_.note_request_dequeued(requests.front());
+        resources.note_request_dequeued(requests.front());
         requests.pop_front();
         removed_any = true;
     }
@@ -1099,7 +1048,7 @@ void PendingManager::discard_invalid_fronts(const PendingQueueKey& key, RunState
     }
 }
 
-PendingTaskRequest PendingManager::take_front_request(const PendingQueueKey& key)
+PendingTaskRequest Engine::PendingManager::take_front_request(const PendingQueueKey& key)
 {
     auto& requests = pending_requests_.at(key);
     auto request = std::move(requests.front());
@@ -1118,99 +1067,150 @@ PendingTaskRequest PendingManager::take_front_request(const PendingQueueKey& key
     return request;
 }
 
-void PendingManager::start_pending_request(PendingCandidateView candidate, RunState& state, double time)
+entt::entity Engine::RunState::create_restored_token(const RestorableTokenSnapshot& snapshot)
 {
-    auto request = take_front_request(candidate.key);
-
-    const auto& node = flux::node(model_, request.task_id);
-    state.resources_.note_request_dequeued(request);
-    state.start_task(request.token, node, time, candidate.allocation, time - request.arrival_time);
+    const auto restored = create_token(
+        snapshot.token.entity_id,
+        snapshot.token.entity_type,
+        snapshot.token.token_id,
+        snapshot.token.created_at);
+    tokens_.restore_snapshot_history(registry_, restored, snapshot.history);
+    return restored;
 }
 
-void schedule_start_events(RunState& state);
-void process_event(RunState& state, const ScheduledEvent& event);
-void handle_generate_entity(RunState& state, const ScheduledEvent& event);
-void handle_arrive_node(RunState& state, const ScheduledEvent& event);
-void handle_finish_task(RunState& state, const ScheduledEvent& event);
-std::string select_exclusive_gateway_target(RunState& state, const NodeDefinition& node);
-
-void schedule_start_events(RunState& state)
+void Engine::RunState::schedule_split_outputs(entt::entity token_entity, const NodeDefinition& node, double start_time, double duration)
 {
-    for (const auto& start_id : state.model_.start_node_ids)
+    if (node.task->type != TaskType::Split)
     {
-        const auto& start_node = flux::node(state.model_, start_id);
+        return;
+    }
+
+    std::vector<entt::entity> outputs;
+    if (node.task->split->method == SplitMethod::Ratio)
+    {
+        outputs.reserve(node.task->split->ratio);
+        for (std::size_t index = 0; index < node.task->split->ratio; ++index)
+        {
+            const auto entity_id = next_entity_id(node.name, node.task->split->entity_type);
+            const auto child = create_token(entity_id, node.task->split->entity_type, entity_id + ".t0", start_time);
+            tokens_.copy_combine_history(registry_, token_entity, child);
+            outputs.push_back(child);
+        }
+    }
+    else
+    {
+        if (!tokens_.token_has_combine_history(registry_, token_entity))
+        {
+            throw std::runtime_error("Task '" + node.id + "' requires a previously combined entity when '_method=restore'.");
+        }
+
+        const auto& history = tokens_.combine_history(registry_, token_entity);
+        const auto& frame = history.frames.back();
+        outputs.reserve(frame.members.size());
+        for (const auto& snapshot : frame.members)
+        {
+            outputs.push_back(create_restored_token(snapshot));
+        }
+    }
+
+    if (outputs.empty())
+    {
+        return;
+    }
+
+    if (node.task->split->one_off)
+    {
+        for (const auto child : outputs)
+        {
+            schedule_token_to_outgoing(node.id, child, start_time + duration);
+        }
+        return;
+    }
+
+    const auto interval = duration / static_cast<double>(outputs.size());
+    for (std::size_t index = 0; index < outputs.size(); ++index)
+    {
+        schedule_token_to_outgoing(node.id, outputs[index], start_time + interval * static_cast<double>(index + 1));
+    }
+}
+
+void Engine::RunState::schedule_start_events()
+{
+    for (const auto& start_id : model_.start_node_ids)
+    {
+        const auto& start_node = flux::node(model_, start_id);
         double next_time = 0.0;
         for (std::size_t index = 0; index < start_node.generator->entity_count; ++index)
         {
-            state.schedule(ScheduledEvent{next_time, state.next_order(), ScheduledEventType::GenerateEntity, start_id, entt::null});
+            schedule(ScheduledEvent{next_time, next_order(), ScheduledEventType::GenerateEntity, start_id, entt::null});
             if (index + 1 < start_node.generator->entity_count)
             {
-                next_time += state.sampler_.sample(start_node.generator->interval_distribution);
+                next_time += sampler_.sample(start_node.generator->interval_distribution);
             }
         }
     }
 }
 
-void process_event(RunState& state, const ScheduledEvent& event)
+void Engine::RunState::process_event(const ScheduledEvent& event)
 {
     switch (event.type)
     {
         case ScheduledEventType::GenerateEntity:
-            handle_generate_entity(state, event);
+            handle_generate_entity(event);
             break;
         case ScheduledEventType::ArriveNode:
-            handle_arrive_node(state, event);
+            handle_arrive_node(event);
             break;
         case ScheduledEventType::FinishTask:
-            handle_finish_task(state, event);
+            handle_finish_task(event);
             break;
     }
 }
 
-void handle_generate_entity(RunState& state, const ScheduledEvent& event)
+void Engine::RunState::handle_generate_entity(const ScheduledEvent& event)
 {
-    const auto& start_node = flux::node(state.model_, event.node_id);
-    const auto entity_id = state.next_entity_id(start_node.name, start_node.generator->entity_type);
-    const auto token = state.create_token(entity_id, start_node.generator->entity_type, entity_id + ".t0", event.time);
-    const auto token_component = state.token(token);
-    ++state.result_.generated_entities;
-    state.log_event(event.time, token_component, start_node, "entity_generated");
+    const auto& start_node = flux::node(model_, event.node_id);
+    const auto entity_id = next_entity_id(start_node.name, start_node.generator->entity_type);
+    const auto token_entity = create_token(entity_id, start_node.generator->entity_type, entity_id + ".t0", event.time);
+    const auto token_component = token(token_entity);
+    ++result_.generated_entities;
+    log_event(event.time, token_component, start_node, "entity_generated");
 
-    const auto found = state.model_.outgoing.find(start_node.id);
-    if (found == state.model_.outgoing.end())
+    const auto found = model_.outgoing.find(start_node.id);
+    if (found == model_.outgoing.end())
     {
         return;
     }
     for (const auto& target_id : found->second)
     {
-        state.schedule(ScheduledEvent{event.time, state.next_order(), ScheduledEventType::ArriveNode, target_id, token});
+        schedule(ScheduledEvent{event.time, next_order(), ScheduledEventType::ArriveNode, target_id, token_entity});
     }
 }
 
-void handle_arrive_node(RunState& state, const ScheduledEvent& event)
+void Engine::RunState::handle_arrive_node(const ScheduledEvent& event)
 {
-    if (!state.token_valid(event.token))
+    if (!token_valid(event.token))
     {
         return;
     }
 
-    const auto& node = flux::node(state.model_, event.node_id);
-    const auto token_component = state.token(event.token);
+    const auto& node = flux::node(model_, event.node_id);
+    const auto token_component = token(event.token);
 
     if (node.type == NodeType::Task)
     {
-        const auto& requested_resources = state.resources_.task_resources(node.id);
-        state.log_event(event.time, token_component, node, "task_arrive");
+        const auto& requested_resources = resources_.task_resources(node.id);
+        log_event(event.time, token_component, node, "task_arrive");
 
-        if ((node.task->type == TaskType::Combine || node.task->type == TaskType::Split) && state.tokens_.token_has_held_resources(state.registry_, event.token))
+        if ((node.task->type == TaskType::Combine || node.task->type == TaskType::Split) && tokens_.token_has_held_resources(registry_, event.token))
         {
             throw std::runtime_error("Task '" + node.id + "' does not support tokens that are holding resources.");
         }
 
         if (node.task->type == TaskType::Combine)
         {
-            state.tokens_.enqueue_combine_member(node.id, event.token);
-            const auto members = state.tokens_.take_ready_combine_batch(state.registry_, node.id, node.task->combine->ratio);
+            tokens_.enqueue_combine_member(node.id, event.token);
+            const auto members = tokens_.take_ready_combine_batch(registry_, node.id, node.task->combine->ratio);
             if (members.empty())
             {
                 return;
@@ -1220,137 +1220,137 @@ void handle_arrive_node(RunState& state, const ScheduledEvent& event)
             snapshots.reserve(members.size());
             for (const auto member : members)
             {
-                snapshots.push_back(state.tokens_.snapshot_token(state.registry_, member));
+                snapshots.push_back(tokens_.snapshot_token(registry_, member));
             }
 
-            const auto entity_id = state.next_entity_id(node.name, node.task->combine->entity_type);
-            const auto batch_token = state.create_token(entity_id, node.task->combine->entity_type, entity_id + ".t0", event.time);
-            state.registry_.emplace<CombineBatch>(batch_token, CombineBatch{members});
-            state.tokens_.set_combine_history(state.registry_, batch_token, std::move(snapshots));
+            const auto entity_id = next_entity_id(node.name, node.task->combine->entity_type);
+            const auto batch_token = create_token(entity_id, node.task->combine->entity_type, entity_id + ".t0", event.time);
+            registry_.emplace<CombineBatch>(batch_token, CombineBatch{members});
+            tokens_.set_combine_history(registry_, batch_token, std::move(snapshots));
 
             if (requested_resources.empty())
             {
-                state.start_task(batch_token, node, event.time, {}, 0.0);
+                start_task(batch_token, node, event.time, {}, 0.0);
                 return;
             }
 
-            if (!state.pending_.has_requests())
+            if (!pending_.has_requests())
             {
-                const auto allocation = state.resources_.allocate_resources_if_possible(state.registry_, node.id, node.task->resource_strategy);
+                const auto allocation = resources_.allocate_resources_if_possible(registry_, node.id, node.task->resource_strategy);
                 if (!allocation.empty())
                 {
-                    state.start_task(batch_token, node, event.time, allocation, 0.0);
+                    start_task(batch_token, node, event.time, allocation, 0.0);
                     return;
                 }
             }
 
-            state.pending_.enqueue_request(PendingTaskRequest{state.next_order(), batch_token, node.id, event.time}, state);
-            state.log_event(event.time, state.token(batch_token), node, "task_waiting_for_resources");
+            pending_.enqueue_request(PendingTaskRequest{next_order(), batch_token, node.id, event.time}, registry_, resources_);
+            log_event(event.time, token(batch_token), node, "task_waiting_for_resources");
             return;
         }
 
         if (node.task->type == TaskType::ReleaseResource)
         {
-            state.start_task(event.token, node, event.time, state.tokens_.release_resources_for_task(state.registry_, event.token, node.id), 0.0);
+            start_task(event.token, node, event.time, tokens_.release_resources_for_task(registry_, event.token, node.id), 0.0);
             return;
         }
 
         if (requested_resources.empty())
         {
-            state.start_task(event.token, node, event.time, {}, 0.0);
+            start_task(event.token, node, event.time, {}, 0.0);
             return;
         }
 
-        if (!state.pending_.has_requests())
+        if (!pending_.has_requests())
         {
             // 没有历史等待者时允许直接抢占；一旦存在等待队列，必须走统一仲裁路径。
-            const auto allocation = state.resources_.allocate_resources_if_possible(state.registry_, node.id, node.task->resource_strategy);
+            const auto allocation = resources_.allocate_resources_if_possible(registry_, node.id, node.task->resource_strategy);
             if (!allocation.empty())
             {
-                state.start_task(event.token, node, event.time, allocation, 0.0);
+                start_task(event.token, node, event.time, allocation, 0.0);
                 return;
             }
         }
 
-        state.pending_.enqueue_request(PendingTaskRequest{state.next_order(), event.token, node.id, event.time}, state);
-        state.log_event(event.time, token_component, node, "task_waiting_for_resources");
+        pending_.enqueue_request(PendingTaskRequest{next_order(), event.token, node.id, event.time}, registry_, resources_);
+        log_event(event.time, token_component, node, "task_waiting_for_resources");
         return;
     }
 
     if (node.type == NodeType::EndEvent)
     {
-        state.log_event(event.time, token_component, node, "entity_exit");
-        ++state.result_.completed_entities;
-        state.destroy_token(event.token);
+        log_event(event.time, token_component, node, "entity_exit");
+        ++result_.completed_entities;
+        destroy_token(event.token);
         return;
     }
 
     if (node.type == NodeType::ExclusiveGateway)
     {
-        const auto selected_target = select_exclusive_gateway_target(state, node);
-        state.log_event(event.time, token_component, node, "gateway_route");
-        state.schedule(ScheduledEvent{event.time, state.next_order(), ScheduledEventType::ArriveNode, selected_target, event.token});
+        const auto selected_target = select_exclusive_gateway_target(node);
+        log_event(event.time, token_component, node, "gateway_route");
+        schedule(ScheduledEvent{event.time, next_order(), ScheduledEventType::ArriveNode, selected_target, event.token});
         return;
     }
 }
 
-void handle_finish_task(RunState& state, const ScheduledEvent& event)
+void Engine::RunState::handle_finish_task(const ScheduledEvent& event)
 {
-    if (!state.token_valid(event.token) || !state.registry_.all_of<ActiveTask>(event.token))
+    if (!token_valid(event.token) || !registry_.all_of<ActiveTask>(event.token))
     {
         return;
     }
 
-    const auto& node = flux::node(state.model_, event.node_id);
-    const auto token_component = state.token(event.token);
-    const auto active_task = state.registry_.get<ActiveTask>(event.token);
+    const auto& node = flux::node(model_, event.node_id);
+    const auto token_component = token(event.token);
+    const auto active_task = registry_.get<ActiveTask>(event.token);
     if (node.task->type == TaskType::Delay || node.task->type == TaskType::Transport)
     {
-        state.apply_release(active_task.allocated_resources, event.time, token_component.entity_id, node.id);
+        apply_release(active_task.allocated_resources, event.time, token_component.entity_id, node.id);
     }
     else if (node.task->type == TaskType::Combine)
     {
-        state.apply_release(active_task.allocated_resources, event.time, token_component.entity_id, node.id);
-        if (state.registry_.all_of<CombineBatch>(event.token))
+        apply_release(active_task.allocated_resources, event.time, token_component.entity_id, node.id);
+        if (registry_.all_of<CombineBatch>(event.token))
         {
-            const auto members = state.registry_.get<CombineBatch>(event.token).members;
+            const auto members = registry_.get<CombineBatch>(event.token).members;
             for (const auto member : members)
             {
-                state.destroy_token(member);
+                destroy_token(member);
             }
-            state.registry_.remove<CombineBatch>(event.token);
+            registry_.remove<CombineBatch>(event.token);
         }
     }
     else if (node.task->type == TaskType::AcquireResource)
     {
-        state.tokens_.add_held_resources(state.registry_, event.token, active_task.allocated_resources);
+        tokens_.add_held_resources(registry_, event.token, active_task.allocated_resources);
     }
     else if (node.task->type == TaskType::ReleaseResource)
     {
-        state.apply_release(active_task.allocated_resources, event.time, token_component.entity_id, node.id);
-        state.tokens_.remove_held_resources(state.registry_, event.token, active_task.allocated_resources);
+        apply_release(active_task.allocated_resources, event.time, token_component.entity_id, node.id);
+        tokens_.remove_held_resources(registry_, event.token, active_task.allocated_resources);
     }
     else if (node.task->type == TaskType::Split)
     {
-        state.apply_release(active_task.allocated_resources, event.time, token_component.entity_id, node.id);
+        apply_release(active_task.allocated_resources, event.time, token_component.entity_id, node.id);
     }
     if (node.task->type == TaskType::Transport)
     {
-        state.result_.total_transport_distance += node.task->distance;
+        result_.total_transport_distance += node.task->distance;
     }
-    state.log_event(event.time, token_component, node, "task_finish");
-    state.registry_.remove<ActiveTask>(event.token);
+    log_event(event.time, token_component, node, "task_finish");
+    registry_.remove<ActiveTask>(event.token);
 
     if (node.task->type == TaskType::Split)
     {
-        state.destroy_token(event.token);
+        destroy_token(event.token);
         return;
     }
 
-    state.schedule_token_to_outgoing(node.id, event.token, event.time);
+    schedule_token_to_outgoing(node.id, event.token, event.time);
 }
 
-std::string select_exclusive_gateway_target(RunState& state, const NodeDefinition& node)
+std::string Engine::RunState::select_exclusive_gateway_target(const NodeDefinition& node)
 {
     if (!node.gateway_criteria.has_value())
     {
@@ -1362,23 +1362,23 @@ std::string select_exclusive_gateway_target(RunState& state, const NodeDefinitio
         throw std::runtime_error("Unsupported exclusive gateway routing criteria.");
     }
 
-    const auto& flow_ids = state.model_.outgoing_flow_ids.at(node.id);
+    const auto& flow_ids = model_.outgoing_flow_ids.at(node.id);
     if (flow_ids.size() == 1)
     {
-        return flux::flow(state.model_, flow_ids.front()).target_id;
+        return flux::flow(model_, flow_ids.front()).target_id;
     }
 
     double total_weight = 0.0;
     for (const auto& flow_id : flow_ids)
     {
-        total_weight += flux::flow(state.model_, flow_id).weight.value_or(0.0);
+        total_weight += flux::flow(model_, flow_id).weight.value_or(0.0);
     }
 
-    const auto threshold = state.sampler_.sample_uniform(0.0, total_weight);
+    const auto threshold = sampler_.sample_uniform(0.0, total_weight);
     double cumulative_weight = 0.0;
     for (const auto& flow_id : flow_ids)
     {
-        const auto& candidate = flux::flow(state.model_, flow_id);
+        const auto& candidate = flux::flow(model_, flow_id);
         cumulative_weight += candidate.weight.value_or(0.0);
         if (threshold < cumulative_weight)
         {
@@ -1386,17 +1386,15 @@ std::string select_exclusive_gateway_target(RunState& state, const NodeDefinitio
         }
     }
 
-    return flux::flow(state.model_, flow_ids.back()).target_id;
+    return flux::flow(model_, flow_ids.back()).target_id;
 }
-
-} // namespace
 
 Result Engine::run(const Model& model, std::uint64_t seed)
 {
     Result result;
     RunState state(model, result, seed);
 
-    schedule_start_events(state);
+    state.schedule_start_events();
 
     while (state.has_events())
     {
@@ -1405,7 +1403,7 @@ Result Engine::run(const Model& model, std::uint64_t seed)
         do
         {
             const auto event = state.next_event();
-            process_event(state, event);
+            state.process_event(event);
         } while (state.has_events() && state.next_event_time() == batch_time);
 
         state.resolve_pending(batch_time);

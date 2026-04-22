@@ -57,14 +57,9 @@ struct RestorableTokenSnapshot
     std::shared_ptr<CombineHistory> history;
 };
 
-struct CombinedFrame
-{
-    std::vector<RestorableTokenSnapshot> members;
-};
-
 struct CombineHistory
 {
-    std::vector<CombinedFrame> frames;
+    std::vector<RestorableTokenSnapshot> members;
 };
 
 struct CombineBatch
@@ -442,7 +437,7 @@ public:
 
     [[nodiscard]] bool token_has_combine_history(const entt::registry& registry, entt::entity token_entity) const
     {
-        return registry.all_of<CombineHistory>(token_entity) && !registry.get<CombineHistory>(token_entity).frames.empty();
+        return registry.all_of<CombineHistory>(token_entity) && !registry.get<CombineHistory>(token_entity).members.empty();
     }
 
     [[nodiscard]] const std::vector<std::string>& held_resources(const entt::registry& registry, entt::entity token_entity) const
@@ -476,20 +471,6 @@ public:
         return RestorableTokenSnapshot{registry.get<ProcessToken>(token_entity), snapshot_combine_history(registry, token_entity)};
     }
 
-    void copy_combine_history(entt::registry& registry, entt::entity source_token, entt::entity target_token)
-    {
-        if (!registry.all_of<CombineHistory>(source_token))
-        {
-            if (registry.all_of<CombineHistory>(target_token))
-            {
-                registry.remove<CombineHistory>(target_token);
-            }
-            return;
-        }
-
-        registry.emplace_or_replace<CombineHistory>(target_token, registry.get<CombineHistory>(source_token));
-    }
-
     void restore_snapshot_history(entt::registry& registry, entt::entity token_entity, const std::shared_ptr<CombineHistory>& history)
     {
         if (!history)
@@ -506,7 +487,7 @@ public:
 
     void set_combine_history(entt::registry& registry, entt::entity token_entity, std::vector<RestorableTokenSnapshot> members)
     {
-        registry.emplace_or_replace<CombineHistory>(token_entity, CombineHistory{{CombinedFrame{std::move(members)}}});
+        registry.emplace_or_replace<CombineHistory>(token_entity, CombineHistory{std::move(members)});
     }
 
     void add_held_resources(entt::registry& registry, entt::entity token_entity, const std::vector<std::string>& resource_ids)
@@ -811,16 +792,8 @@ private:
 
     void schedule_token_to_outgoing(const std::string& node_id, entt::entity token_entity, double time)
     {
-        const auto found = model_.outgoing.find(node_id);
-        if (found == model_.outgoing.end())
-        {
-            return;
-        }
-
-        for (const auto& target_id : found->second)
-        {
-            schedule(ScheduledEvent{time, next_order(), ScheduledEventType::ArriveNode, target_id, token_entity});
-        }
+        const auto& target_id = model_.outgoing.at(node_id).front();
+        schedule(ScheduledEvent{time, next_order(), ScheduledEventType::ArriveNode, target_id, token_entity});
     }
 
     void destroy_token(entt::entity entity)
@@ -1107,7 +1080,6 @@ void Engine::RunState::schedule_split_outputs(entt::entity token_entity, const N
         {
             const auto entity_id = next_entity_id(node.name, node.task->split->entity_type);
             const auto child = create_token(entity_id, node.task->split->entity_type, entity_id + ".t0", start_time);
-            tokens_.copy_combine_history(registry_, token_entity, child);
             outputs.push_back(child);
         }
     }
@@ -1119,9 +1091,8 @@ void Engine::RunState::schedule_split_outputs(entt::entity token_entity, const N
         }
 
         const auto& history = tokens_.combine_history(registry_, token_entity);
-        const auto& frame = history.frames.back();
-        outputs.reserve(frame.members.size());
-        for (const auto& snapshot : frame.members)
+        outputs.reserve(history.members.size());
+        for (const auto& snapshot : history.members)
         {
             outputs.push_back(create_restored_token(snapshot));
         }
@@ -1189,16 +1160,7 @@ void Engine::RunState::handle_generate_entity(const ScheduledEvent& event)
     const auto token_component = token(token_entity);
     ++result_.generated_entities;
     log_event(event.time, token_component, start_node, "entity_generated");
-
-    const auto found = model_.outgoing.find(start_node.id);
-    if (found == model_.outgoing.end())
-    {
-        return;
-    }
-    for (const auto& target_id : found->second)
-    {
-        schedule(ScheduledEvent{event.time, next_order(), ScheduledEventType::ArriveNode, target_id, token_entity});
-    }
+    schedule_token_to_outgoing(start_node.id, token_entity, event.time);
 }
 
 void Engine::RunState::handle_arrive_node(const ScheduledEvent& event)

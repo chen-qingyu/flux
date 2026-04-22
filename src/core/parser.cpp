@@ -730,9 +730,9 @@ private:
                     {
                         throw std::runtime_error("Start event '" + node_id + "' must generate at least one entity.");
                     }
-                    if (!model_.outgoing.contains(node_id) || model_.outgoing.at(node_id).empty())
+                    if (!model_.outgoing.contains(node_id) || model_.outgoing.at(node_id).size() != 1)
                     {
-                        throw std::runtime_error("Start event '" + node_id + "' must have outgoing sequence flow.");
+                        throw std::runtime_error("Start event '" + node_id + "' must have exactly one outgoing sequence flow.");
                     }
                     validate_distribution(definition.generator->interval_distribution, "Start event '" + node_id + "'");
                     break;
@@ -741,9 +741,9 @@ private:
                     {
                         throw std::runtime_error("Task '" + node_id + "' is missing duration settings.");
                     }
-                    if (!model_.outgoing.contains(node_id) || model_.outgoing.at(node_id).empty())
+                    if (!model_.outgoing.contains(node_id) || model_.outgoing.at(node_id).size() != 1)
                     {
-                        throw std::runtime_error("Task '" + node_id + "' must have outgoing sequence flow.");
+                        throw std::runtime_error("Task '" + node_id + "' must have exactly one outgoing sequence flow.");
                     }
                     {
                         std::size_t resource_count = 0;

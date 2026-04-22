@@ -5,7 +5,7 @@
     xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
     xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
     xmlns:camunda="http://camunda.org/schema/1.0/bpmn" id="Definitions_Process_1775034001031" targetNamespace="http://bpmn.io/schema/bpmn">
-    <bpmn:process id="Process_multisrc" name="多资源银行业务流程" isExecutable="true">
+    <bpmn:process id="Process_multi_resources" name="多资源银行业务流程" isExecutable="true">
         <bpmn:startEvent id="Event_start" name="发生器">
             <bpmn:extensionElements>
                 <camunda:properties>

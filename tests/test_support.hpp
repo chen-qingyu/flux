@@ -45,9 +45,10 @@ inline Result run_model(const std::filesystem::path& model_path, std::uint64_t s
     return Engine::run(model, seed);
 }
 
-inline void require_report_matches(const std::filesystem::path& model_path, const std::string& golden_prefix)
+inline void require_report_matches(const std::filesystem::path& model_path)
 {
     const auto result = run_model(model_path);
+    const auto golden_prefix = model_path.stem().string();
 
     const auto project_root = std::filesystem::current_path();
     const auto output_root = project_root / "output" / golden_prefix;

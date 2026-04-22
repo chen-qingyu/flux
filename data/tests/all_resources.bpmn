@@ -1,27 +1,25 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <bpmn:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
-    xmlns:camunda="http://camunda.org/schema/1.0/bpmn"
-    id="Definitions_Any_Resource_Minimal"
-    targetNamespace="http://bpmn.io/schema/bpmn">
-    <bpmn:process id="Process_any_resource_minimal" name="ANY 资源最小流程" isExecutable="true">
-        <bpmn:startEvent id="Event_start" name="ANY发生器">
+    xmlns:camunda="http://camunda.org/schema/1.0/bpmn" id="Definitions_All_Resources" targetNamespace="http://bpmn.io/schema/bpmn">
+    <bpmn:process id="Process_all_resources" name="ALL 资源" isExecutable="true">
+        <bpmn:startEvent id="Event_start" name="ALL发生器">
             <bpmn:extensionElements>
                 <camunda:properties>
                     <camunda:property name="_initiatorType" value="random" />
                     <camunda:property name="_distributionType" value="static" />
                     <camunda:property name="_entityCount" value="1" />
-                    <camunda:property name="_entityType" value="ticket" />
+                    <camunda:property name="_entityType" value="case" />
                     <camunda:property name="_staticInterval" value="1" />
                 </camunda:properties>
             </bpmn:extensionElements>
             <bpmn:outgoing>Flow_start_to_task</bpmn:outgoing>
         </bpmn:startEvent>
-        <bpmn:task id="Task_service" name="任一资源服务">
+        <bpmn:task id="Task_service" name="全部资源服务">
             <bpmn:extensionElements>
                 <camunda:properties>
                     <camunda:property name="_taskType" value="delay" />
-                    <camunda:property name="_resourceStrategy" value="any" />
+                    <camunda:property name="_resourceStrategy" value="all" />
                     <camunda:property name="_distributionType" value="static" />
                     <camunda:property name="_staticInterval" value="4" />
                 </camunda:properties>
@@ -37,7 +35,7 @@
                 </camunda:properties>
             </bpmn:extensionElements>
         </bpmn:dataStoreReference>
-        <bpmn:dataStoreReference id="DataStoreReference_kiosk" name="自助机">
+        <bpmn:dataStoreReference id="DataStoreReference_pc" name="电脑">
             <bpmn:extensionElements>
                 <camunda:properties>
                     <camunda:property name="_resourceType" value="resource" />
@@ -51,6 +49,6 @@
         <bpmn:sequenceFlow id="Flow_start_to_task" sourceRef="Event_start" targetRef="Task_service" />
         <bpmn:sequenceFlow id="Flow_task_to_end" sourceRef="Task_service" targetRef="Event_end" />
         <bpmn:association id="Association_task_clerk" associationDirection="Both" sourceRef="Task_service" targetRef="DataStoreReference_clerk" />
-        <bpmn:association id="Association_task_kiosk" associationDirection="Both" sourceRef="Task_service" targetRef="DataStoreReference_kiosk" />
+        <bpmn:association id="Association_task_pc" associationDirection="Both" sourceRef="Task_service" targetRef="DataStoreReference_pc" />
     </bpmn:process>
 </bpmn:definitions>

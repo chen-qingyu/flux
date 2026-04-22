@@ -8,7 +8,7 @@
 
 TEST_CASE("Any-resource strategy allocates one deterministic resource", "[runtime][any]")
 {
-    const auto result = flux::test_support::run_model(std::filesystem::path("data") / "tests" / "any_resource_minimal.bpmn");
+    const auto result = flux::test_support::run_model(std::filesystem::path("data") / "tests" / "any_resource.bpmn");
 
     const auto task_starts = flux::test_support::select_events(result, "task_start");
     REQUIRE(task_starts.size() == 1);
@@ -27,7 +27,7 @@ TEST_CASE("Any-resource strategy allocates one deterministic resource", "[runtim
 
 TEST_CASE("All-resource strategy allocates every associated resource", "[runtime][all]")
 {
-    const auto result = flux::test_support::run_model(std::filesystem::path("data") / "tests" / "all_resources_minimal.bpmn");
+    const auto result = flux::test_support::run_model(std::filesystem::path("data") / "tests" / "all_resources.bpmn");
 
     const auto task_starts = flux::test_support::select_events(result, "task_start");
     REQUIRE(task_starts.size() == 1);
@@ -46,7 +46,7 @@ TEST_CASE("All-resource strategy allocates every associated resource", "[runtime
 
 TEST_CASE("FIFO queue starts entities in arrival order", "[runtime][fifo]")
 {
-    const auto result = flux::test_support::run_model(std::filesystem::path("data") / "tests" / "fifo_queue_minimal.bpmn");
+    const auto result = flux::test_support::run_model(std::filesystem::path("data") / "tests" / "fifo_queue.bpmn");
 
     const auto task_starts = flux::test_support::select_events(result, "task_start");
     REQUIRE(task_starts.size() == 3);
@@ -115,7 +115,7 @@ TEST_CASE("Weighted splitter routes entities across outgoing branches", "[runtim
 
 TEST_CASE("Transport task accumulates total distance on completion", "[runtime][transport]")
 {
-    const auto result = flux::test_support::run_model(std::filesystem::path("data") / "tests" / "transport_minimal.bpmn");
+    const auto result = flux::test_support::run_model(std::filesystem::path("data") / "tests" / "transport.bpmn");
 
     const auto task_finishes = flux::test_support::select_events(result, "task_finish");
     REQUIRE(task_finishes.size() == 3);
@@ -166,7 +166,7 @@ TEST_CASE("Multisrc runtime stays under three seconds", "[runtime][perf]")
 {
     constexpr double threshold_seconds = 3.0;
 
-    const auto model = flux::Parser::parse(std::filesystem::path("data") / "tests" / "multisrc.bpmn");
+    const auto model = flux::Parser::parse(std::filesystem::path("data") / "tests" / "multi_resources.bpmn");
 
     const auto started_at = std::chrono::steady_clock::now();
     const auto result = flux::Engine::run(model, 42);

@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+    xmlns:camunda="http://camunda.org/schema/1.0/bpmn" id="Definitions_RestoreChain" targetNamespace="http://bpmn.io/schema/bpmn">
+    <bpmn:process id="Process_RestoreChain" isExecutable="true">
+        <bpmn:startEvent id="Event_start" name="发生器">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_initiatorType" value="random" />
+                    <camunda:property name="_distributionType" value="static" />
+                    <camunda:property name="_staticInterval" value="1" />
+                    <camunda:property name="_entityCount" value="4" />
+                    <camunda:property name="_entityType" value="cargo" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:outgoing>Flow_start_combine_inner</bpmn:outgoing>
+        </bpmn:startEvent>
+        <bpmn:task id="Activity_combine_inner" name="内层合并">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_taskType" value="combine" />
+                    <camunda:property name="_method" value="ratio" />
+                    <camunda:property name="_ratio" value="2" />
+                    <camunda:property name="_distributionType" value="static" />
+                    <camunda:property name="_staticInterval" value="0" />
+                    <camunda:property name="_entityType" value="pallet" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:incoming>Flow_start_combine_inner</bpmn:incoming>
+            <bpmn:outgoing>Flow_combine_inner_combine_outer</bpmn:outgoing>
+        </bpmn:task>
+        <bpmn:task id="Activity_combine_outer" name="外层合并">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_taskType" value="combine" />
+                    <camunda:property name="_method" value="ratio" />
+                    <camunda:property name="_ratio" value="2" />
+                    <camunda:property name="_distributionType" value="static" />
+                    <camunda:property name="_staticInterval" value="0" />
+                    <camunda:property name="_entityType" value="truck" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:incoming>Flow_combine_inner_combine_outer</bpmn:incoming>
+            <bpmn:outgoing>Flow_combine_outer_restore_outer</bpmn:outgoing>
+        </bpmn:task>
+        <bpmn:task id="Activity_restore_outer" name="外层还原">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_taskType" value="split" />
+                    <camunda:property name="_method" value="restore" />
+                    <camunda:property name="_oneOff" value="true" />
+                    <camunda:property name="_distributionType" value="static" />
+                    <camunda:property name="_staticInterval" value="0" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:incoming>Flow_combine_outer_restore_outer</bpmn:incoming>
+            <bpmn:outgoing>Flow_restore_outer_restore_inner</bpmn:outgoing>
+        </bpmn:task>
+        <bpmn:task id="Activity_restore_inner" name="内层还原">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_taskType" value="split" />
+                    <camunda:property name="_method" value="restore" />
+                    <camunda:property name="_oneOff" value="true" />
+                    <camunda:property name="_distributionType" value="static" />
+                    <camunda:property name="_staticInterval" value="0" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:incoming>Flow_restore_outer_restore_inner</bpmn:incoming>
+            <bpmn:outgoing>Flow_restore_inner_end</bpmn:outgoing>
+        </bpmn:task>
+        <bpmn:endEvent id="Event_end" name="终点">
+            <bpmn:incoming>Flow_restore_inner_end</bpmn:incoming>
+        </bpmn:endEvent>
+        <bpmn:sequenceFlow id="Flow_start_combine_inner" sourceRef="Event_start" targetRef="Activity_combine_inner" />
+        <bpmn:sequenceFlow id="Flow_combine_inner_combine_outer" sourceRef="Activity_combine_inner" targetRef="Activity_combine_outer" />
+        <bpmn:sequenceFlow id="Flow_combine_outer_restore_outer" sourceRef="Activity_combine_outer" targetRef="Activity_restore_outer" />
+        <bpmn:sequenceFlow id="Flow_restore_outer_restore_inner" sourceRef="Activity_restore_outer" targetRef="Activity_restore_inner" />
+        <bpmn:sequenceFlow id="Flow_restore_inner_end" sourceRef="Activity_restore_inner" targetRef="Event_end" />
+    </bpmn:process>
+</bpmn:definitions>

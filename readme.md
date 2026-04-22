@@ -164,7 +164,7 @@ python run.py data/demo.bpmn --seed 42
 支持方法：
 
 - `_method=ratio`：还需要 `_ratio` 和新的 `_entityType`，表示 `1 -> M` 拆分
-- `_method=restore`：要求输入实体之前由 `combine` 生成；会按最近一次未还原的合并记录恢复原始实体ID、类型和数量
+- `_method=restore`：要求输入实体之前由 `combine` 生成；会按最近一次未还原的合并记录恢复原始实体ID、类型和数量。支持嵌套。
 - `_method=quantity`：目前只是占位，解析阶段会直接报不支持
 
 ### 资源

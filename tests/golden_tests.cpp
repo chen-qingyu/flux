@@ -36,3 +36,8 @@ TEST_CASE("Combine split golden CSV stays stable", "[golden][combine-split]")
 {
     flux::test_support::require_report_matches(std::filesystem::path("data") / "tests" / "combine_split_minimal.bpmn", "combine_split");
 }
+
+TEST_CASE("Restore chain golden CSV stays stable", "[golden][restore-chain]")
+{
+    flux::test_support::require_report_matches(std::filesystem::path("data") / "tests" / "restore_chain_minimal.bpmn", "restore_chain");
+}

@@ -498,51 +498,35 @@ private:
     {
         for (const auto& child : process.children())
         {
-            parse_process_child(child);
-        }
-    }
-
-    void parse_process_child(const pugi::xml_node& child)
-    {
-        const auto type_name = local_name(child.name());
-        if (type_name == "startEvent")
-        {
-            parse_start_event(child);
-            return;
-        }
-        if (type_name == "task")
-        {
-            parse_task(child);
-            return;
-        }
-        if (type_name == "endEvent")
-        {
-            parse_end_event(child);
-            return;
-        }
-        if (type_name == "exclusiveGateway")
-        {
-            parse_exclusive_gateway(child);
-            return;
-        }
-        if (type_name == "dataStoreReference")
-        {
-            parse_resource(child);
-            return;
-        }
-        if (type_name == "sequenceFlow")
-        {
-            parse_sequence_flow(child);
-            return;
-        }
-        if (type_name == "association")
-        {
-            parse_association(child);
-            return;
-        }
-        if (type_name == "dataInputAssociation" || type_name == "dataOutputAssociation")
-        {
-            parse_association(child);
+            const auto type_name = local_name(child.name());
+            if (type_name == "startEvent")
+            {
+                parse_start_event(child);
+            }
+            else if (type_name == "task")
+            {
+                parse_task(child);
+            }
+            else if (type_name == "endEvent")
+            {
+                parse_end_event(child);
+            }
+            else if (type_name == "exclusiveGateway")
+            {
+                parse_exclusive_gateway(child);
+            }
+            else if (type_name == "dataStoreReference")
+            {
+                parse_resource(child);
+            }
+            else if (type_name == "sequenceFlow")
+            {
+                parse_sequence_flow(child);
+            }
+            else if (type_name == "association" || type_name == "dataInputAssociation" || type_name == "dataOutputAssociation")
+            {
+                parse_association(child);
+            }
         }
     }
 
@@ -705,11 +689,6 @@ private:
                 continue;
             }
 
-            if (*definition.gateway_criteria != GatewayCriteria::ByWeight)
-            {
-                throw std::runtime_error("Exclusive gateway '" + node_id + "' uses unsupported routing criteria.");
-            }
-
             const auto found = model_.outgoing_flow_ids.find(node_id);
             if (found == model_.outgoing_flow_ids.end() || found->second.empty())
             {
@@ -778,7 +757,14 @@ private:
                             resource_count = resources->second.size();
                         }
 
-                        if ((definition.task->type == TaskType::Delay || definition.task->type == TaskType::Transport || definition.task->type == TaskType::Combine || definition.task->type == TaskType::Split) && resource_count > 1 && !definition.task->resource_strategy.has_value())
+                        const auto require_resource_types =
+                            definition.task->type == TaskType::Delay ||
+                            definition.task->type == TaskType::Transport ||
+                            definition.task->type == TaskType::Combine ||
+                            definition.task->type == TaskType::Split ||
+                            definition.task->type == TaskType::AcquireResource;
+
+                        if (require_resource_types && resource_count > 1 && !definition.task->resource_strategy.has_value())
                         {
                             throw std::runtime_error("Task '" + node_id + "' must provide '_resourceStrategy' when multiple resources are associated.");
                         }
@@ -788,10 +774,6 @@ private:
                             if (resource_count == 0)
                             {
                                 throw std::runtime_error("Task '" + node_id + "' must bind at least one resource when '_taskType=acquireResource'.");
-                            }
-                            if (resource_count > 1 && !definition.task->resource_strategy.has_value())
-                            {
-                                throw std::runtime_error("Task '" + node_id + "' must provide '_resourceStrategy' when multiple resources are associated.");
                             }
                         }
 
@@ -828,25 +810,17 @@ private:
                     {
                         throw std::runtime_error("Exclusive gateway '" + node_id + "' must define '_criteria'.");
                     }
-                    if (*definition.gateway_criteria != GatewayCriteria::ByWeight)
-                    {
-                        throw std::runtime_error("Exclusive gateway '" + node_id + "' uses unsupported routing criteria.");
-                    }
                     if (incoming_count(node_id) != 1)
                     {
                         throw std::runtime_error("Exclusive gateway '" + node_id + "' must have exactly one incoming sequence flow.");
                     }
                     if (outgoing_count(node_id) == 0)
                     {
-                        throw std::runtime_error("Gateway '" + node_id + "' must have outgoing sequence flow.");
+                        throw std::runtime_error("Exclusive gateway '" + node_id + "' must have at least one outgoing sequence flow.");
                     }
-                    if (definition.type == NodeType::ExclusiveGateway && definition.gateway_criteria == GatewayCriteria::ByWeight)
+                    if (definition.gateway_criteria == GatewayCriteria::ByWeight)
                     {
                         const auto flow_ids = model_.outgoing_flow_ids.find(node_id);
-                        if (flow_ids == model_.outgoing_flow_ids.end() || flow_ids->second.empty())
-                        {
-                            throw std::runtime_error("Exclusive gateway '" + node_id + "' must have outgoing sequence flow.");
-                        }
                         for (const auto& flow_id : flow_ids->second)
                         {
                             const auto& flow = flow_by_id(flow_id);

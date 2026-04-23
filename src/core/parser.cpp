@@ -269,6 +269,24 @@ private:
         throw std::runtime_error("Unknown flow id: " + flow_id);
     }
 
+    [[nodiscard]] std::size_t incoming_count(const std::string& node_id) const
+    {
+        if (const auto found = model_.incoming.find(node_id); found != model_.incoming.end())
+        {
+            return found->second.size();
+        }
+        return 0;
+    }
+
+    [[nodiscard]] std::size_t outgoing_count(const std::string& node_id) const
+    {
+        if (const auto found = model_.outgoing.find(node_id); found != model_.outgoing.end())
+        {
+            return found->second.size();
+        }
+        return 0;
+    }
+
     void validate_distribution(const DistributionSpec& distribution, const std::string& context) const
     {
         switch (distribution.type)
@@ -730,7 +748,11 @@ private:
                     {
                         throw std::runtime_error("Start event '" + node_id + "' must generate at least one entity.");
                     }
-                    if (!model_.outgoing.contains(node_id) || model_.outgoing.at(node_id).size() != 1)
+                    if (incoming_count(node_id) != 0)
+                    {
+                        throw std::runtime_error("Start event '" + node_id + "' must not have incoming sequence flow.");
+                    }
+                    if (outgoing_count(node_id) != 1)
                     {
                         throw std::runtime_error("Start event '" + node_id + "' must have exactly one outgoing sequence flow.");
                     }
@@ -741,7 +763,11 @@ private:
                     {
                         throw std::runtime_error("Task '" + node_id + "' is missing duration settings.");
                     }
-                    if (!model_.outgoing.contains(node_id) || model_.outgoing.at(node_id).size() != 1)
+                    if (incoming_count(node_id) == 0)
+                    {
+                        throw std::runtime_error("Task '" + node_id + "' must have at least one incoming sequence flow.");
+                    }
+                    if (outgoing_count(node_id) != 1)
                     {
                         throw std::runtime_error("Task '" + node_id + "' must have exactly one outgoing sequence flow.");
                     }
@@ -788,6 +814,14 @@ private:
                     }
                     break;
                 case NodeType::EndEvent:
+                    if (incoming_count(node_id) == 0)
+                    {
+                        throw std::runtime_error("End event '" + node_id + "' must have at least one incoming sequence flow.");
+                    }
+                    if (outgoing_count(node_id) != 0)
+                    {
+                        throw std::runtime_error("End event '" + node_id + "' must not have outgoing sequence flow.");
+                    }
                     break;
                 case NodeType::ExclusiveGateway:
                     if (!definition.gateway_criteria.has_value())
@@ -798,7 +832,11 @@ private:
                     {
                         throw std::runtime_error("Exclusive gateway '" + node_id + "' uses unsupported routing criteria.");
                     }
-                    if (!model_.outgoing.contains(node_id) || model_.outgoing.at(node_id).empty())
+                    if (incoming_count(node_id) != 1)
+                    {
+                        throw std::runtime_error("Exclusive gateway '" + node_id + "' must have exactly one incoming sequence flow.");
+                    }
+                    if (outgoing_count(node_id) == 0)
                     {
                         throw std::runtime_error("Gateway '" + node_id + "' must have outgoing sequence flow.");
                     }

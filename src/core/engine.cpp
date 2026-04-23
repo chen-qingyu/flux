@@ -767,10 +767,10 @@ private:
         return next_order_++;
     }
 
-    [[nodiscard]] std::string next_entity_id(const std::string& start_name, const std::string& entity_type)
+    [[nodiscard]] std::string next_entity_id(const std::string& creator_node_id, const std::string& entity_type)
     {
-        const auto index = business_sequence_++;
-        return start_name + "_" + entity_type + "_" + std::to_string(index);
+        const auto index = entity_type_sequences_[entity_type]++;
+        return creator_node_id + "_" + entity_type + "_" + std::to_string(index);
     }
 
     entt::entity create_token(const std::string& entity_id, const std::string& entity_type, const std::string& token_id, double created_at)
@@ -882,7 +882,7 @@ private:
     std::priority_queue<ScheduledEvent, std::vector<ScheduledEvent>, ScheduledEventCompare> queue_;
     double current_time_{0.0};
     std::uint64_t next_order_{0};
-    std::size_t business_sequence_{0};
+    std::unordered_map<std::string, std::size_t> entity_type_sequences_;
 };
 
 void Engine::PendingManager::enqueue_request(PendingTaskRequest request, entt::registry& registry, ResourceManager& resources)
@@ -1078,7 +1078,7 @@ void Engine::RunState::schedule_split_outputs(entt::entity token_entity, const N
         outputs.reserve(node.task->split->ratio);
         for (std::size_t index = 0; index < node.task->split->ratio; ++index)
         {
-            const auto entity_id = next_entity_id(node.name, node.task->split->entity_type);
+            const auto entity_id = next_entity_id(node.id, node.task->split->entity_type);
             const auto child = create_token(entity_id, node.task->split->entity_type, entity_id + ".t0", start_time);
             outputs.push_back(child);
         }
@@ -1155,7 +1155,7 @@ void Engine::RunState::process_event(const ScheduledEvent& event)
 void Engine::RunState::handle_generate_entity(const ScheduledEvent& event)
 {
     const auto& start_node = flux::node(model_, event.node_id);
-    const auto entity_id = next_entity_id(start_node.name, start_node.generator->entity_type);
+    const auto entity_id = next_entity_id(start_node.id, start_node.generator->entity_type);
     const auto token_entity = create_token(entity_id, start_node.generator->entity_type, entity_id + ".t0", event.time);
     const auto token_component = token(token_entity);
     ++result_.generated_entities;
@@ -1198,7 +1198,7 @@ void Engine::RunState::handle_arrive_node(const ScheduledEvent& event)
                 snapshots.push_back(tokens_.snapshot_token(registry_, member));
             }
 
-            const auto entity_id = next_entity_id(node.name, node.task->combine->entity_type);
+            const auto entity_id = next_entity_id(node.id, node.task->combine->entity_type);
             const auto batch_token = create_token(entity_id, node.task->combine->entity_type, entity_id + ".t0", event.time);
             registry_.emplace<CombineBatch>(batch_token, CombineBatch{members});
             tokens_.set_combine_history(registry_, batch_token, std::move(snapshots));

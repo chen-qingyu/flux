@@ -810,9 +810,9 @@ private:
                     {
                         throw std::runtime_error("Exclusive gateway '" + node_id + "' must define '_criteria'.");
                     }
-                    if (incoming_count(node_id) != 1)
+                    if (incoming_count(node_id) == 0)
                     {
-                        throw std::runtime_error("Exclusive gateway '" + node_id + "' must have exactly one incoming sequence flow.");
+                        throw std::runtime_error("Exclusive gateway '" + node_id + "' must have at least one incoming sequence flow.");
                     }
                     if (outgoing_count(node_id) == 0)
                     {

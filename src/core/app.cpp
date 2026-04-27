@@ -26,7 +26,7 @@ void run(const std::string& file_path, std::uint64_t seed)
 
     const auto model = Parser::parse(input_file);
     const auto result = Engine::run(model, seed);
-    write_reports(output_dir, result.reports, input_stem);
+    Reporter::report(output_dir, result.reports, input_stem);
 
     const auto end_time = std::chrono::steady_clock::now();
     const auto duration = std::chrono::duration<double>(end_time - start_time).count();

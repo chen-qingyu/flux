@@ -41,7 +41,9 @@ std::filesystem::path csv_path(const std::filesystem::path& output_directory, co
     return output_directory / fmt::format("{}_{}.csv", base_name, file_suffix);
 }
 
-void write_events(const std::filesystem::path& output_directory, const ReportBundle& bundle, const std::string& file_suffix)
+} // namespace
+
+void Reporter::write_events(const std::filesystem::path& output_directory, const ReportBundle& bundle, const std::string& file_suffix)
 {
     auto stream = open_csv_file(csv_path(output_directory, "events", file_suffix));
     auto writer = csv::make_csv_writer_buffered(stream);
@@ -62,7 +64,7 @@ void write_events(const std::filesystem::path& output_directory, const ReportBun
     }
 }
 
-void write_resource_timeline(const std::filesystem::path& output_directory, const ReportBundle& bundle, const std::string& file_suffix)
+void Reporter::write_resource_timeline(const std::filesystem::path& output_directory, const ReportBundle& bundle, const std::string& file_suffix)
 {
     auto stream = open_csv_file(csv_path(output_directory, "resource_timeline", file_suffix));
     auto writer = csv::make_csv_writer_buffered(stream);
@@ -85,7 +87,7 @@ void write_resource_timeline(const std::filesystem::path& output_directory, cons
     }
 }
 
-void write_resource_summary(const std::filesystem::path& output_directory, const ReportBundle& bundle, const std::string& file_suffix)
+void Reporter::write_resource_summary(const std::filesystem::path& output_directory, const ReportBundle& bundle, const std::string& file_suffix)
 {
     auto stream = open_csv_file(csv_path(output_directory, "resource_summary", file_suffix));
     auto writer = csv::make_csv_writer_buffered(stream);
@@ -109,9 +111,7 @@ void write_resource_summary(const std::filesystem::path& output_directory, const
     }
 }
 
-} // namespace
-
-void write_reports(const std::filesystem::path& output_directory, const ReportBundle& bundle, const std::string& file_suffix)
+void Reporter::report(const std::filesystem::path& output_directory, const ReportBundle& bundle, const std::string& file_suffix)
 {
     std::filesystem::create_directories(output_directory);
 

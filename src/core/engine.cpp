@@ -67,6 +67,12 @@ struct CombineBatch
     std::vector<entt::entity> members;
 };
 
+struct RatioProgress
+{
+    std::size_t processed_inputs{0};
+    std::size_t emitted_outputs{0};
+};
+
 struct ResourceRuntime
 {
     std::string resource_id;
@@ -557,7 +563,7 @@ public:
         combine_waiting_[task_id].push_back(token_entity);
     }
 
-    [[nodiscard]] std::vector<entt::entity> take_ready_combine_batch(const entt::registry& registry, const std::string& task_id, std::size_t ratio)
+    [[nodiscard]] std::vector<entt::entity> take_waiting_combine_members(const entt::registry& registry, const std::string& task_id)
     {
         auto found = combine_waiting_.find(task_id);
         if (found == combine_waiting_.end())
@@ -570,22 +576,19 @@ public:
         {
             waiting.pop_front();
         }
-        if (waiting.size() < ratio)
+        if (waiting.empty())
         {
             return {};
         }
 
         std::vector<entt::entity> members;
-        members.reserve(ratio);
-        for (std::size_t index = 0; index < ratio; ++index)
+        members.reserve(waiting.size());
+        while (!waiting.empty())
         {
             members.push_back(waiting.front());
             waiting.pop_front();
         }
-        if (waiting.empty())
-        {
-            combine_waiting_.erase(found);
-        }
+        combine_waiting_.erase(found);
         return members;
     }
 
@@ -857,6 +860,8 @@ private:
 
     [[nodiscard]] std::string select_exclusive_gateway_target(const NodeDefinition& node);
     [[nodiscard]] entt::entity create_restored_token(const RestorableTokenSnapshot& snapshot);
+    [[nodiscard]] std::size_t advance_combine_outputs(const std::string& task_id, double ratio);
+    [[nodiscard]] std::size_t advance_split_outputs(const std::string& task_id, double ratio);
     void start_or_enqueue_task(entt::entity token_entity, const NodeDefinition& node, double time);
     void schedule_split_outputs(entt::entity token_entity, const NodeDefinition& node, double start_time, double duration);
 
@@ -883,6 +888,8 @@ private:
     double current_time_{0.0};
     std::uint64_t next_order_{0};
     std::unordered_map<std::string, std::size_t> entity_type_sequences_;
+    std::unordered_map<std::string, RatioProgress> combine_ratio_progress_;
+    std::unordered_map<std::string, RatioProgress> split_ratio_progress_;
 };
 
 void Engine::PendingManager::enqueue_request(PendingTaskRequest request, entt::registry& registry, ResourceManager& resources)
@@ -1041,6 +1048,38 @@ entt::entity Engine::RunState::create_restored_token(const RestorableTokenSnapsh
     return restored;
 }
 
+std::size_t Engine::RunState::advance_combine_outputs(const std::string& task_id, double ratio)
+{
+    auto& progress = combine_ratio_progress_[task_id];
+    ++progress.processed_inputs;
+
+    const auto target_outputs = static_cast<std::size_t>(std::floor((static_cast<long double>(progress.processed_inputs) / static_cast<long double>(ratio)) + 1e-12L));
+    if (target_outputs <= progress.emitted_outputs)
+    {
+        return 0;
+    }
+
+    const auto delta = target_outputs - progress.emitted_outputs;
+    progress.emitted_outputs = target_outputs;
+    return delta;
+}
+
+std::size_t Engine::RunState::advance_split_outputs(const std::string& task_id, double ratio)
+{
+    auto& progress = split_ratio_progress_[task_id];
+    ++progress.processed_inputs;
+
+    const auto target_outputs = static_cast<std::size_t>(std::floor((static_cast<long double>(progress.processed_inputs) * static_cast<long double>(ratio)) + 1e-12L));
+    if (target_outputs <= progress.emitted_outputs)
+    {
+        return 0;
+    }
+
+    const auto delta = target_outputs - progress.emitted_outputs;
+    progress.emitted_outputs = target_outputs;
+    return delta;
+}
+
 void Engine::RunState::start_or_enqueue_task(entt::entity token_entity, const NodeDefinition& node, double time)
 {
     const auto& requested_resources = resources_.task_resources(node.id);
@@ -1075,8 +1114,9 @@ void Engine::RunState::schedule_split_outputs(entt::entity token_entity, const N
     std::vector<entt::entity> outputs;
     if (node.task->split->method == SplitMethod::Ratio)
     {
-        outputs.reserve(node.task->split->ratio);
-        for (std::size_t index = 0; index < node.task->split->ratio; ++index)
+        const auto output_count = advance_split_outputs(node.id, node.task->split->ratio);
+        outputs.reserve(output_count);
+        for (std::size_t index = 0; index < output_count; ++index)
         {
             const auto entity_id = next_entity_id(node.id, node.task->split->entity_type);
             const auto child = create_token(entity_id, node.task->split->entity_type, entity_id + ".t0", start_time);
@@ -1185,10 +1225,21 @@ void Engine::RunState::handle_arrive_node(const ScheduledEvent& event)
         if (node.task->type == TaskType::Combine)
         {
             tokens_.enqueue_combine_member(node.id, event.token);
-            const auto members = tokens_.take_ready_combine_batch(registry_, node.id, node.task->combine->ratio);
-            if (members.empty())
+            const auto output_count = advance_combine_outputs(node.id, node.task->combine->ratio);
+            if (output_count == 0)
             {
                 return;
+            }
+
+            if (output_count != 1)
+            {
+                throw std::runtime_error("Task '" + node.id + "' produced an invalid combine ratio transition.");
+            }
+
+            const auto members = tokens_.take_waiting_combine_members(registry_, node.id);
+            if (members.empty())
+            {
+                throw std::runtime_error("Task '" + node.id + "' is missing combine members for a ready ratio batch.");
             }
 
             std::vector<RestorableTokenSnapshot> snapshots;

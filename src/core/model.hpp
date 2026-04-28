@@ -78,14 +78,14 @@ struct GeneratorSpec
 struct CombineSpec
 {
     CombineMethod method{CombineMethod::Ratio};
-    std::size_t ratio{0};
+    double ratio{0.0};
     std::string entity_type;
 };
 
 struct SplitSpec
 {
     SplitMethod method{SplitMethod::Ratio};
-    std::size_t ratio{0};
+    double ratio{0.0};
     bool one_off{true};
     std::string entity_type;
 };

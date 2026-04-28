@@ -192,6 +192,16 @@ private:
         throw std::runtime_error(context + " is missing required property '" + key + "'.");
     }
 
+    [[nodiscard]] double read_required_positive_double(const PropertyMap& properties, const std::string& key, const std::string& context) const
+    {
+        const auto parsed = read_required_double(properties, key, context);
+        if (!std::isfinite(parsed) || parsed <= 0.0)
+        {
+            throw std::runtime_error(context + " property '" + key + "' must be a finite value greater than zero.");
+        }
+        return parsed;
+    }
+
     [[nodiscard]] DistributionSpec read_distribution(const PropertyMap& properties, const std::string& type_key, const std::string& context) const
     {
         const auto distribution_type = read_required_enum<DistributionType>(properties, type_key, context);
@@ -390,7 +400,11 @@ private:
             throw std::runtime_error(context + " does not support combine method 'quantity' yet.");
         }
 
-        combine.ratio = read_required_count(properties, "_ratio", context);
+        combine.ratio = read_required_positive_double(properties, "_ratio", context);
+        if (combine.ratio < 1.0)
+        {
+            throw std::runtime_error(context + " property '_ratio' must be greater than or equal to 1 for combine tasks.");
+        }
         combine.entity_type = read_required_text(properties, "_entityType", context);
         return combine;
     }
@@ -404,7 +418,7 @@ private:
         switch (split.method)
         {
             case SplitMethod::Ratio:
-                split.ratio = read_required_count(properties, "_ratio", context);
+                split.ratio = read_required_positive_double(properties, "_ratio", context);
                 split.entity_type = read_required_text(properties, "_entityType", context);
                 return split;
             case SplitMethod::Restore:

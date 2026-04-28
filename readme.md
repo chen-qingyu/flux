@@ -148,11 +148,11 @@ python run.py data/demo.bpmn --seed 42
 
 必填：`_method`、`_distributionType`
 
-说明：按 `N -> 1` 合并。只有凑满一批才会启动，不足比例的实体会继续等待。该任务也可以绑定资源。
+说明：按累计阈值合并。处理到第 `n` 个输入实体时，累计产出数为 `floor(n / _ratio)`；只有当这个累计值增长时才会启动新的合并输出。不足 1 个完整输出的尾差会继续等待，直到后续输入跨过阈值；如果流程结束仍未跨过阈值，则尾差直接丢弃。该任务也可以绑定资源。
 
 支持方法：
 
-- `_method=ratio`：还需要 `_ratio` 和新的 `_entityType`，表示 `N -> 1` 合并
+- `_method=ratio`：还需要 `_ratio` 和新的 `_entityType`，表示 `N -> 1` 合并。`_ratio` 支持大于等于 `1` 的整数或浮点数，例如 `38` 个输入经过 `_ratio=3.8` 的合并后会产生 `10` 个新实体
 - `_method=quantity`：目前只是占位，解析阶段会直接报不支持
 
 #### split
@@ -163,7 +163,7 @@ python run.py data/demo.bpmn --seed 42
 
 支持方法：
 
-- `_method=ratio`：还需要 `_ratio` 和新的 `_entityType`，表示 `1 -> M` 拆分
+- `_method=ratio`：还需要 `_ratio` 和新的 `_entityType`，表示 `1 -> M` 拆分。处理到第 `n` 个输入实体时，累计产出数为 `floor(n * _ratio)`，每次只补齐新增的输出，因此 `_ratio` 支持正整数和正浮点数
 - `_method=restore`：要求输入实体之前由 `combine` 生成；会按最近一次未还原的合并记录恢复原始实体ID、类型和数量。支持嵌套。
 - `_method=quantity`：目前只是占位，解析阶段会直接报不支持
 

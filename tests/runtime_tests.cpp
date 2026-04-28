@@ -161,6 +161,48 @@ TEST_CASE("Lifecycle model releases bound and remaining held resources correctly
     REQUIRE(driver_summary->busy_time == 8.0);
 }
 
+TEST_CASE("Floating-point ratios work across combine delay split pipeline", "[runtime][combine][split][ratio-float]")
+{
+    const auto result = flux::test_support::run_model(std::filesystem::path("data") / "tests" / "float_ratio_pipeline.bpmn");
+    const auto task_starts = flux::test_support::select_events(result, "task_start");
+    const auto exits = flux::test_support::select_events(result, "entity_exit");
+    const auto combine_starts = std::count_if(task_starts.begin(), task_starts.end(), [](const auto& row)
+                                              { return row.node_id == "Activity_combine"; });
+    const auto delay_starts = std::count_if(task_starts.begin(), task_starts.end(), [](const auto& row)
+                                            { return row.node_id == "Activity_delay"; });
+    const auto split_starts = std::count_if(task_starts.begin(), task_starts.end(), [](const auto& row)
+                                            { return row.node_id == "Activity_split"; });
+
+    REQUIRE(result.generated_entities == 38);
+    REQUIRE(result.completed_entities == 38);
+    REQUIRE(combine_starts == 10);
+    REQUIRE(delay_starts == 10);
+    REQUIRE(split_starts == 10);
+    REQUIRE(exits.size() == 38);
+
+    for (const auto& row : task_starts)
+    {
+        if (row.node_id == "Activity_combine")
+        {
+            REQUIRE(row.entity_type == "box");
+        }
+        if (row.node_id == "Activity_delay")
+        {
+            REQUIRE(row.entity_type == "box");
+        }
+        if (row.node_id == "Activity_split")
+        {
+            REQUIRE(row.entity_type == "box");
+        }
+    }
+
+    for (const auto& row : exits)
+    {
+        REQUIRE(row.node_id == "Event_end");
+        REQUIRE(row.entity_type == "parcel");
+    }
+}
+
 #ifdef NDEBUG
 TEST_CASE("Multisrc runtime stays under three seconds", "[runtime][perf]")
 {

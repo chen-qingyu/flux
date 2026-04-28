@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+    xmlns:camunda="http://camunda.org/schema/1.0/bpmn" id="Definitions_FloatRatioPipeline" targetNamespace="http://bpmn.io/schema/bpmn">
+    <bpmn:process id="Process_FloatRatioPipeline" isExecutable="true">
+        <bpmn:startEvent id="Event_start" name="发生器">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_initiatorType" value="random" />
+                    <camunda:property name="_distributionType" value="static" />
+                    <camunda:property name="_staticInterval" value="1" />
+                    <camunda:property name="_entityCount" value="38" />
+                    <camunda:property name="_entityType" value="cargo" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:outgoing>Flow_start_combine</bpmn:outgoing>
+        </bpmn:startEvent>
+        <bpmn:sequenceFlow id="Flow_start_combine" sourceRef="Event_start" targetRef="Activity_combine" />
+        <bpmn:task id="Activity_combine" name="合并活动">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_taskType" value="combine" />
+                    <camunda:property name="_method" value="ratio" />
+                    <camunda:property name="_ratio" value="3.8" />
+                    <camunda:property name="_distributionType" value="static" />
+                    <camunda:property name="_staticInterval" value="0" />
+                    <camunda:property name="_entityType" value="box" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:incoming>Flow_start_combine</bpmn:incoming>
+            <bpmn:outgoing>Flow_combine_delay</bpmn:outgoing>
+        </bpmn:task>
+        <bpmn:sequenceFlow id="Flow_combine_delay" sourceRef="Activity_combine" targetRef="Activity_delay" />
+        <bpmn:task id="Activity_delay" name="延时活动">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_taskType" value="delay" />
+                    <camunda:property name="_distributionType" value="static" />
+                    <camunda:property name="_staticInterval" value="2" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:incoming>Flow_combine_delay</bpmn:incoming>
+            <bpmn:outgoing>Flow_delay_split</bpmn:outgoing>
+        </bpmn:task>
+        <bpmn:sequenceFlow id="Flow_delay_split" sourceRef="Activity_delay" targetRef="Activity_split" />
+        <bpmn:task id="Activity_split" name="拆分活动">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_taskType" value="split" />
+                    <camunda:property name="_method" value="ratio" />
+                    <camunda:property name="_ratio" value="3.8" />
+                    <camunda:property name="_oneOff" value="true" />
+                    <camunda:property name="_distributionType" value="static" />
+                    <camunda:property name="_staticInterval" value="0" />
+                    <camunda:property name="_entityType" value="parcel" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:incoming>Flow_delay_split</bpmn:incoming>
+            <bpmn:outgoing>Flow_split_end</bpmn:outgoing>
+        </bpmn:task>
+        <bpmn:sequenceFlow id="Flow_split_end" sourceRef="Activity_split" targetRef="Event_end" />
+        <bpmn:endEvent id="Event_end" name="终点">
+            <bpmn:incoming>Flow_split_end</bpmn:incoming>
+        </bpmn:endEvent>
+    </bpmn:process>
+</bpmn:definitions>

@@ -331,14 +331,14 @@ public:
         }
     }
 
-    void finalize(entt::registry& registry, Result& result, double horizon_s)
+    void finalize(entt::registry& registry, Result& result, double horizon)
     {
         for (const auto& resource_id : resource_ids_)
         {
             auto& runtime = resource_runtime(registry, resource_id);
-            update_busy_time(runtime, horizon_s);
+            update_busy_time(runtime, horizon);
 
-            const auto capacity_time = static_cast<double>(runtime.capacity) * horizon_s;
+            const auto capacity_time = static_cast<double>(runtime.capacity) * horizon;
             const auto busy_time = runtime.busy_unit_time;
             const auto idle_time = std::max(0.0, capacity_time - busy_time);
             const auto utilization = capacity_time > 0.0 ? busy_time / capacity_time : 0.0;
@@ -354,7 +354,7 @@ public:
                 runtime.max_queue_length,
                 average_wait_time,
                 runtime.allocation_count,
-                horizon_s,
+                horizon,
             });
         }
     }

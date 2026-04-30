@@ -699,9 +699,8 @@ private:
 class Engine::RunState
 {
 public:
-    RunState(const Model& model, Result& result, std::uint64_t seed)
+    RunState(const Model& model, std::uint64_t seed)
         : model_(model)
-        , result_(result)
         , sampler_(seed)
         , resources_(model)
         , pending_(model)
@@ -728,6 +727,11 @@ public:
         return event;
     }
 
+    [[nodiscard]] const Result& result() const
+    {
+        return result_;
+    }
+
     void resolve_pending(double time)
     {
         if (!pending_.begin_resolution())
@@ -748,9 +752,9 @@ public:
         }
     }
 
-    void finalize_resources(double horizon_s)
+    void finalize_resources()
     {
-        resources_.finalize(registry_, result_, horizon_s);
+        resources_.finalize(registry_, result_, result_.simulation_horizon);
     }
 
     void schedule_start_events();
@@ -879,7 +883,7 @@ private:
 
     entt::registry registry_;
     const Model& model_;
-    Result& result_;
+    Result result_;
     DistributionSampler sampler_;
     Engine::ResourceManager resources_;
     Engine::TokenManager tokens_{resources_};
@@ -1385,8 +1389,7 @@ std::string Engine::RunState::select_exclusive_gateway_target(const NodeDefiniti
 
 Result Engine::run(const Model& model, std::uint64_t seed)
 {
-    Result result;
-    RunState state(model, result, seed);
+    RunState state(model, seed);
 
     state.schedule_start_events();
 
@@ -1403,8 +1406,8 @@ Result Engine::run(const Model& model, std::uint64_t seed)
         state.resolve_pending(batch_time);
     }
 
-    state.finalize_resources(result.simulation_horizon);
-    return result;
+    state.finalize_resources();
+    return state.result();
 }
 
 } // namespace flux

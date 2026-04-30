@@ -331,8 +331,9 @@ public:
         }
     }
 
-    void finalize(entt::registry& registry, Result& result, double horizon)
+    void finalize(entt::registry& registry, Result& result)
     {
+        const auto horizon = result.simulation_horizon;
         for (const auto& resource_id : resource_ids_)
         {
             auto& runtime = resource_runtime(registry, resource_id);
@@ -727,9 +728,9 @@ public:
         return event;
     }
 
-    [[nodiscard]] const Result& result() const
+    [[nodiscard]] Result take_result()
     {
-        return result_;
+        return std::move(result_);
     }
 
     void resolve_pending(double time)
@@ -752,9 +753,9 @@ public:
         }
     }
 
-    void finalize_resources()
+    void finalize()
     {
-        resources_.finalize(registry_, result_, result_.simulation_horizon);
+        resources_.finalize(registry_, result_);
     }
 
     void schedule_start_events();
@@ -1406,8 +1407,8 @@ Result Engine::run(const Model& model, std::uint64_t seed)
         state.resolve_pending(batch_time);
     }
 
-    state.finalize_resources();
-    return state.result();
+    state.finalize();
+    return state.take_result();
 }
 
 } // namespace flux

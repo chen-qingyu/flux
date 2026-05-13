@@ -25,6 +25,12 @@ enum class DistributionType
     LogNormal,
 };
 
+enum class InitiatorType
+{
+    Random,
+    External,
+};
+
 enum class ResourceStrategy
 {
     All,
@@ -70,8 +76,10 @@ struct DistributionSpec
 // 起始事件负责生成业务实体，并决定相邻两次生成之间的间隔。
 struct GeneratorSpec
 {
+    InitiatorType type{InitiatorType::Random};
     DistributionSpec interval_distribution{};
     std::size_t entity_count{0};
+    std::vector<double> external_times;
     std::string entity_type;
 };
 

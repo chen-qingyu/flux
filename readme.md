@@ -120,12 +120,17 @@ python run.py data/demo.bpmn --seed 42
 必填属性：
 
 - `_initiatorType`
-- `_entityCount`
 - `_entityType`
 
-当前开始事件只支持 `_initiatorType=random`。
+支持类型：`random`、`external`
 
-当 `_initiatorType=random` 时，会继续读取字段 `_distributionType`，其取值是分布类型：`static`、`uniform`、`exponential`、`normal`、`lognormal`。
+当 `_initiatorType=random` 时，还必须提供 `_entityCount` 表示生成实体的数量，并提供 `_distributionType`，其取值是分布类型：`static`、`uniform`、`exponential`、`normal`、`lognormal`。
+
+当 `_initiatorType=external` 时：
+
+- 按开始事件 id 读取文件 `data/external/<startEvent id>.csv`
+- CSV 必须有表头，且第一列表头必须是 `time`
+- 生成时刻取自 `time` 列，解析阶段会按 `time` 升序稳定排序后再调度生成
 
 ### 分布属性
 

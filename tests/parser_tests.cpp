@@ -38,6 +38,17 @@ TEST_CASE("Parser reads fifo generator count", "[parser][fifo]")
     REQUIRE(start.generator->entity_type == "customer");
 }
 
+TEST_CASE("Parser reads external generator times", "[parser][external]")
+{
+    const auto model = flux::Parser::parse(std::filesystem::path("data") / "tests" / "external_start.bpmn");
+
+    const auto& start = flux::node(model, "Event_external");
+    REQUIRE(start.generator.has_value());
+    REQUIRE(start.generator->type == flux::InitiatorType::External);
+    REQUIRE(start.generator->entity_type == "customer");
+    REQUIRE(start.generator->external_times == std::vector<double>{1.0, 3.0, 3.0, 7.5});
+}
+
 TEST_CASE("Parser reads weighted splitter model", "[parser][splitter]")
 {
     const auto model = flux::Parser::parse(std::filesystem::path("data") / "tests" / "splitter.bpmn");

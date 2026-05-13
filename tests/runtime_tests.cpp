@@ -64,6 +64,29 @@ TEST_CASE("FIFO queue starts entities in arrival order", "[runtime][fifo]")
     REQUIRE(result.reports.resource_summary_rows[0].average_wait_time == 3.0);
 }
 
+TEST_CASE("External initiator generates entities from sorted csv times", "[runtime][external]")
+{
+    const auto result = flux::test_support::run_model(std::filesystem::path("data") / "tests" / "external_start.bpmn");
+
+    const auto generated = flux::test_support::select_events(result, "entity_generated");
+    REQUIRE(generated.size() == 4);
+    REQUIRE(generated[0].time == 1.0);
+    REQUIRE(generated[1].time == 3.0);
+    REQUIRE(generated[2].time == 3.0);
+    REQUIRE(generated[3].time == 7.5);
+    REQUIRE(generated[0].entity_id == "Event_external_customer_0");
+    REQUIRE(generated[1].entity_id == "Event_external_customer_1");
+    REQUIRE(generated[2].entity_id == "Event_external_customer_2");
+    REQUIRE(generated[3].entity_id == "Event_external_customer_3");
+
+    const auto task_arrivals = flux::test_support::select_events(result, "task_arrive");
+    REQUIRE(task_arrivals.size() == 4);
+    REQUIRE(task_arrivals[0].time == 1.0);
+    REQUIRE(task_arrivals[1].time == 3.0);
+    REQUIRE(task_arrivals[2].time == 3.0);
+    REQUIRE(task_arrivals[3].time == 7.5);
+}
+
 TEST_CASE("Arbitration model covers oldest-feasible waiting rules", "[runtime][same-timestamp]")
 {
     const auto result = flux::test_support::run_model(std::filesystem::path("data") / "tests" / "arbitration.bpmn");

@@ -1169,6 +1169,15 @@ void Engine::RunState::schedule_start_events()
     for (const auto& start_id : model_.start_node_ids)
     {
         const auto& start_node = flux::node(model_, start_id);
+        if (start_node.generator->type == InitiatorType::External)
+        {
+            for (const double time : start_node.generator->external_times)
+            {
+                schedule(ScheduledEvent{time, next_order(), ScheduledEventType::GenerateEntity, start_id, entt::null});
+            }
+            continue;
+        }
+
         double next_time = 0.0;
         for (std::size_t index = 0; index < start_node.generator->entity_count; ++index)
         {

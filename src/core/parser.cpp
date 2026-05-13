@@ -3,12 +3,14 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <filesystem>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include <csv.hpp>
 #include <magic_enum/magic_enum.hpp>
 #include <pugixml.hpp>
 
@@ -108,6 +110,37 @@ private:
         }
 
         return properties;
+    }
+
+    [[nodiscard]] std::vector<double> read_external_times(const std::string& start_id) const
+    {
+        const auto csv_path = std::filesystem::current_path() / "data" / "external" / (start_id + ".csv");
+        if (!std::filesystem::exists(csv_path))
+        {
+            throw std::runtime_error("Start event '" + start_id + "' external csv file 'data/external/" + start_id + ".csv' was not found.");
+        }
+
+        csv::CSVReader reader(csv_path.string());
+
+        const auto headers = reader.get_col_names();
+        if (headers.empty() || headers.front() != "time")
+        {
+            throw std::runtime_error("Start event '" + start_id + "' external csv file must have 'time' as the first column header.");
+        }
+
+        std::vector<double> times;
+        for (const auto& row : reader)
+        {
+            const auto parsed = row[0].get<double>();
+            if (!std::isfinite(parsed) || parsed < 0.0)
+            {
+                throw std::runtime_error("Start event '" + start_id + "' external csv has invalid value.");
+            }
+            times.push_back(parsed);
+        }
+
+        std::stable_sort(times.begin(), times.end());
+        return times;
     }
 
     [[nodiscard]] double read_required_double(const PropertyMap& properties, const std::string& key, const std::string& context) const
@@ -345,18 +378,29 @@ private:
     [[nodiscard]] GeneratorSpec read_generator_spec(const pugi::xml_node& node) const
     {
         const auto properties = read_properties(node);
-        const auto context = "Start event '" + read_required_attribute(node, "id", "Start event") + "'";
+        const auto start_id = read_required_attribute(node, "id", "Start event");
+        const auto context = "Start event '" + start_id + "'";
 
         const auto initiator_type = lower_copy(read_required_text(properties, "_initiatorType", context));
-        if (initiator_type != "random")
+        GeneratorSpec generator;
+        generator.entity_type = read_required_text(properties, "_entityType", context);
+
+        if (initiator_type == "random")
         {
-            throw std::runtime_error(context + " uses unsupported _initiatorType '" + initiator_type + "'. Only 'random' is supported.");
+            generator.type = InitiatorType::Random;
+            generator.interval_distribution = read_distribution(properties, "_distributionType", context);
+            generator.entity_count = read_required_count(properties, "_entityCount", context);
+            return generator;
         }
 
-        GeneratorSpec generator;
-        generator.interval_distribution = read_distribution(properties, "_distributionType", context);
-        generator.entity_count = read_required_count(properties, "_entityCount", context);
-        generator.entity_type = read_required_text(properties, "_entityType", context);
+        if (initiator_type == "external")
+        {
+            generator.type = InitiatorType::External;
+            generator.external_times = read_external_times(start_id);
+            return generator;
+        }
+
+        throw std::runtime_error(context + " uses unsupported _initiatorType '" + initiator_type + "'. Only 'random' and 'external' are supported.");
         return generator;
     }
 
@@ -737,7 +781,11 @@ private:
                     {
                         throw std::runtime_error("Start event '" + node_id + "' is missing generator settings.");
                     }
-                    if (definition.generator->entity_count == 0)
+                    if (definition.generator->type == InitiatorType::Random && definition.generator->entity_count == 0)
+                    {
+                        throw std::runtime_error("Start event '" + node_id + "' must generate at least one entity.");
+                    }
+                    if (definition.generator->type == InitiatorType::External && definition.generator->external_times.empty())
                     {
                         throw std::runtime_error("Start event '" + node_id + "' must generate at least one entity.");
                     }
@@ -749,7 +797,10 @@ private:
                     {
                         throw std::runtime_error("Start event '" + node_id + "' must have exactly one outgoing sequence flow.");
                     }
-                    validate_distribution(definition.generator->interval_distribution, "Start event '" + node_id + "'");
+                    if (definition.generator->type == InitiatorType::Random)
+                    {
+                        validate_distribution(definition.generator->interval_distribution, "Start event '" + node_id + "'");
+                    }
                     break;
                 case NodeType::Task:
                     if (!definition.task.has_value())

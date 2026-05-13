@@ -14,6 +14,10 @@ target("flux-lib")
     set_kind("static")
     add_packages("entt", "pugixml", "spdlog", "magic_enum", "csvparser", {public = true})
     add_files("src/core/*.cpp")
+    on_load(function(target)
+        local csvparser = target:pkg("csvparser")
+        target:add("files", path.join(csvparser:installdir(), "include", "internal", "*.cpp"))
+    end)
     if is_plat("linux") then
         add_cxflags("-fPIC")
     end

@@ -29,27 +29,45 @@ BPMN File -> Parser -> Model (ECS Graph) -> Engine (DOD + EnTT) -> Reporter -> O
 - 显式资源生命周期：`acquireResource`、`releaseResource`
 - 合并活动：按比例 `ratio` 进行合并
 - 拆分活动：按比例 `ratio` 进行拆分，或者按最近一次合并记录进行 `restore`
-- 网关语义：`XOR`
+- 网关语义：`exclusiveGateway`，支持按权重随机路由的分流器
 - 输出报表，包括实体事件日志、资源占用时间线、资源利用率等信息
 - 时间是无量纲时间，单位可由用户定义
 
 ## 构建运行
 
-构建所有二进制目标：
+### 环境要求
+
+1. C++ 编译器，需要支持 C++20
+2. XMake 3.0+
+3. Python 3.9+（仅打包安装 Python SDK 时需要）
+
+### 构建
+
+第一次构建时会自动下载依赖库，请确保网络畅通。
+
+构建所有可执行文件：
 
 ```bash
 xmake build
 ```
 
-运行：
+### 运行
+
+`xmake run flux <file> [--seed <seed>]`
+
+- `file`: 输入文件，位置参数，必填
+- `--seed`: 随机种子，可省略，默认是 `42`
+
+以下两条命令等价：
 
 ```bash
 xmake run flux data/demo.bpmn
 xmake run flux data/demo.bpmn --seed 42
 ```
 
-- `file`: 输入文件，位置参数，必填
-- `--seed`: 随机种子，可省略，默认是 `42`
+### Python SDK
+
+可以作为 Python 包安装，供用户在 Python 环境中调用。
 
 打包 Python SDK：
 
@@ -57,10 +75,12 @@ xmake run flux data/demo.bpmn --seed 42
 python -m build python
 ```
 
-安装 Python SDK：
+打包后会在 `python/dist/` 目录生成 `.whl` 和 `.tar.gz` 文件。
+若在同一台机器上打包和安装，推荐 `.whl`；如果需要跨机器安装，推荐 `.tar.gz`：
 
 ```bash
-pip install python/dist/flux-*.whl
+pip install python/dist/xxx.whl
+pip install python/dist/xxx.tar.gz
 ```
 
 包名是 `flux`，支持 Python `3.9+`，提供 `flux.run(file, seed=42)`
@@ -106,6 +126,21 @@ python run.py data/demo.bpmn --seed 42
 当前开始事件只支持 `_initiatorType=random`。
 
 当 `_initiatorType=random` 时，会继续读取字段 `_distributionType`，其取值是分布类型：`static`、`uniform`、`exponential`、`normal`、`lognormal`。
+
+### 分布属性
+
+支持分布：
+
+- `static`: 固定间隔，属性是 `_staticInterval`
+- `uniform`: 均匀分布，属性是 `_min` 和 `_max`
+- `exponential`: 指数分布，属性是 `_mean`
+- `normal`: 正态分布，属性是 `_mean` 和 `_standardDeviation`
+- `lognormal`: 对数正态分布，属性是 `_mean` 和 `_standardDeviation`
+
+校验规则：
+
+- 解析阶段会校验参数，拒绝明显落到负时间域的输入
+- `normal` 为了性能会把负值截到 `0`，不会重采样
 
 ### 任务
 
@@ -167,27 +202,28 @@ python run.py data/demo.bpmn --seed 42
 - `_method=restore`：要求输入实体之前由 `combine` 生成；会按最近一次未还原的合并记录恢复原始实体ID、类型和数量。支持嵌套。
 - `_method=quantity`：目前只是占位，解析阶段会直接报不支持
 
+### 网关
+
+必填属性：
+
+- `_criteria`
+
+支持类型：`by_weight`
+
+规则：
+
+- 当 `_criteria=by_weight` 时，实体会按各出边权重占比随机进入其中一条分支
+- 每条从分流器流出的 `sequenceFlow` 都必须在 `name` 中填写正数权重，例如 `1`、`2`、`3.5`
+- 解析阶段会校验 `_criteria` 是否存在，以及每条出边是否都提供了正数权重
+
+例如，三个出边权重分别为 `1`、`2`、`3` 时，长期比例接近 `1/6`、`2/6`、`3/6`。
+
 ### 资源
 
 必填属性：
 
 - `_resourceType`
 - `_capacity`
-
-### 分布属性
-
-支持分布：
-
-- `static`: 固定间隔，属性是 `_staticInterval`
-- `uniform`: 均匀分布，属性是 `_min` 和 `_max`
-- `exponential`: 指数分布，属性是 `_mean`
-- `normal`: 正态分布，属性是 `_mean` 和 `_standardDeviation`
-- `lognormal`: 对数正态分布，属性是 `_mean` 和 `_standardDeviation`
-
-校验规则：
-
-- 解析阶段会校验参数，拒绝明显落到负时间域的输入
-- `normal` 为了性能会把负值截到 `0`，不会重采样
 
 ## 最小示例
 

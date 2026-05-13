@@ -246,9 +246,9 @@ private:
             return std::nullopt;
         }
 
-        if (lower_copy(found->second) == "by_weight")
+        if (lower_copy(found->second) == "weight")
         {
-            return GatewayCriteria::ByWeight;
+            return GatewayCriteria::Weight;
         }
 
         throw std::runtime_error(context + " uses unsupported property '_criteria' value '" + found->second + "'.");
@@ -832,7 +832,7 @@ private:
                     {
                         throw std::runtime_error("Exclusive gateway '" + node_id + "' must have at least one outgoing sequence flow.");
                     }
-                    if (definition.gateway_criteria == GatewayCriteria::ByWeight)
+                    if (definition.gateway_criteria == GatewayCriteria::Weight)
                     {
                         const auto flow_ids = model_.outgoing_flow_ids.find(node_id);
                         for (const auto& flow_id : flow_ids->second)

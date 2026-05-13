@@ -208,11 +208,11 @@ python run.py data/demo.bpmn --seed 42
 
 - `_criteria`
 
-支持类型：`by_weight`
+支持类型：`weight`
 
 规则：
 
-- 当 `_criteria=by_weight` 时，实体会按各出边权重占比随机进入其中一条分支
+- 当 `_criteria=weight` 时，实体会按各出边权重占比随机进入其中一条分支
 - 每条从分流器流出的 `sequenceFlow` 都必须在 `name` 中填写正数权重，例如 `1`、`2`、`3.5`
 - 解析阶段会校验 `_criteria` 是否存在，以及每条出边是否都提供了正数权重
 

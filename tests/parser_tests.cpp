@@ -43,7 +43,7 @@ TEST_CASE("Parser reads weighted splitter model", "[parser][splitter]")
     const auto model = flux::Parser::parse(std::filesystem::path("data") / "tests" / "splitter.bpmn");
 
     const auto& gateway = flux::node(model, "Gateway_splitter");
-    REQUIRE(gateway.gateway_criteria == flux::GatewayCriteria::ByWeight);
+    REQUIRE(gateway.gateway_criteria == flux::GatewayCriteria::Weight);
     REQUIRE(model.outgoing_flow_ids.at("Gateway_splitter").size() == 3);
 
     const auto& flow_1 = flux::flow(model, "Flow_07g491b");

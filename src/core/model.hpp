@@ -56,7 +56,7 @@ enum class SplitMethod
 
 enum class GatewayCriteria
 {
-    ByWeight,
+    Weight,
 };
 
 // 分布参数统一压平成两个数值位，具体含义由 type 决定。

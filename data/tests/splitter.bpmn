@@ -22,7 +22,7 @@
         <bpmn:exclusiveGateway id="Gateway_splitter" name="分流器">
             <bpmn:extensionElements>
                 <camunda:properties>
-                    <camunda:property name="_criteria" value="by_weight" />
+                    <camunda:property name="_criteria" value="weight" />
                 </camunda:properties>
             </bpmn:extensionElements>
             <bpmn:incoming>Flow_0qg0i81</bpmn:incoming>

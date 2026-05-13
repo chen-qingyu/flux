@@ -1356,7 +1356,7 @@ std::string Engine::RunState::select_exclusive_gateway_target(const NodeDefiniti
         throw std::runtime_error("Exclusive gateway '" + node.id + "' must define routing criteria before execution.");
     }
 
-    if (*node.gateway_criteria != GatewayCriteria::ByWeight)
+    if (*node.gateway_criteria != GatewayCriteria::Weight)
     {
         throw std::runtime_error("Unsupported exclusive gateway routing criteria.");
     }

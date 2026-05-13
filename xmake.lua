@@ -5,7 +5,7 @@ set_languages("cxx20")
 set_encodings("utf-8")
 
 add_rules("mode.debug", "mode.release")
-add_requires("entt", "pugixml", "spdlog", "magic_enum", "catch2", "argparse", "pybind11", "csvparser")
+add_requires("entt 3.16", "pugixml 1.15", "spdlog 1.17", "magic_enum 0.9", "catch2 3.14", "argparse 3.2", "pybind11 3.0", "csvparser 3.1")
 if is_plat("linux") then
     add_requireconfs("pybind11.python", {override = true, configs = {headeronly = true}})
 end

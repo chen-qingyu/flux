@@ -188,6 +188,16 @@ struct ScheduledEvent
     std::string node_id;
     entt::entity token{entt::null};
     std::optional<std::size_t> external_record_index;
+
+    [[nodiscard]] bool operator<(const ScheduledEvent& other) const
+    {
+        // priority_queue 默认取“最大”元素为堆顶，这里反向比较以保持最早事件优先。
+        if (time != other.time)
+        {
+            return time > other.time;
+        }
+        return order > other.order;
+    }
 };
 
 class Engine::ResourceManager
@@ -877,18 +887,6 @@ private:
     void start_or_enqueue_task(entt::entity token_entity, const NodeDefinition& node, double time);
     void schedule_split_outputs(entt::entity token_entity, const NodeDefinition& node, double start_time, double duration);
 
-    struct ScheduledEventCompare
-    {
-        bool operator()(const ScheduledEvent& left, const ScheduledEvent& right) const
-        {
-            if (left.time != right.time)
-            {
-                return left.time > right.time;
-            }
-            return left.order > right.order;
-        }
-    };
-
     entt::registry registry_;
     const Model& model_;
     Result result_;
@@ -896,7 +894,7 @@ private:
     Engine::ResourceManager resources_;
     Engine::TokenManager tokens_{resources_};
     Engine::PendingManager pending_;
-    std::priority_queue<ScheduledEvent, std::vector<ScheduledEvent>, ScheduledEventCompare> queue_;
+    std::priority_queue<ScheduledEvent> queue_;
     double current_time_{0.0};
     std::uint64_t next_order_{0};
     std::unordered_map<std::string, std::size_t> entity_type_sequences_;

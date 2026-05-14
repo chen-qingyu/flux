@@ -63,6 +63,13 @@ enum class SplitMethod
 enum class GatewayCriteria
 {
     Weight,
+    Property,
+};
+
+struct ExternalRecord
+{
+    double time{0.0};
+    std::unordered_map<std::string, std::string> properties;
 };
 
 // 分布参数统一压平成两个数值位，具体含义由 type 决定。
@@ -79,7 +86,7 @@ struct GeneratorSpec
     InitiatorType type{InitiatorType::Random};
     DistributionSpec interval_distribution{};
     std::size_t entity_count{0};
-    std::vector<double> external_times;
+    std::vector<ExternalRecord> external_records;
     std::string entity_type;
 };
 
@@ -117,6 +124,7 @@ struct NodeDefinition
     std::optional<GeneratorSpec> generator;
     std::optional<TaskSpec> task;
     std::optional<GatewayCriteria> gateway_criteria;
+    std::optional<std::string> gateway_property_name;
 };
 
 struct SequenceFlowDefinition
@@ -126,6 +134,7 @@ struct SequenceFlowDefinition
     std::string source_id;
     std::string target_id;
     std::optional<double> weight;
+    std::optional<std::string> property_value;
 };
 
 struct ResourceDefinition

@@ -36,6 +36,7 @@ struct ProcessToken
     std::string entity_type;
     std::string token_id;
     double created_at{0.0};
+    std::unordered_map<std::string, std::string> properties;
 };
 
 struct ActiveTask
@@ -186,6 +187,7 @@ struct ScheduledEvent
     ScheduledEventType type{ScheduledEventType::GenerateEntity};
     std::string node_id;
     entt::entity token{entt::null};
+    std::optional<std::size_t> external_record_index;
 };
 
 class Engine::ResourceManager
@@ -781,10 +783,15 @@ private:
         return creator_node_id + "_" + entity_type + "_" + std::to_string(index);
     }
 
-    entt::entity create_token(const std::string& entity_id, const std::string& entity_type, const std::string& token_id, double created_at)
+    entt::entity create_token(
+        const std::string& entity_id,
+        const std::string& entity_type,
+        const std::string& token_id,
+        double created_at,
+        std::unordered_map<std::string, std::string> properties = {})
     {
         const auto entity = registry_.create();
-        registry_.emplace<ProcessToken>(entity, ProcessToken{entity_id, entity_type, token_id, created_at});
+        registry_.emplace<ProcessToken>(entity, ProcessToken{entity_id, entity_type, token_id, created_at, std::move(properties)});
         return entity;
     }
 
@@ -801,7 +808,7 @@ private:
     void schedule_token_to_outgoing(const std::string& node_id, entt::entity token_entity, double time)
     {
         const auto& target_id = model_.outgoing.at(node_id).front();
-        schedule(ScheduledEvent{time, next_order(), ScheduledEventType::ArriveNode, target_id, token_entity});
+        schedule(ScheduledEvent{time, next_order(), ScheduledEventType::ArriveNode, target_id, token_entity, std::nullopt});
     }
 
     void destroy_token(entt::entity entity)
@@ -856,14 +863,14 @@ private:
         const auto duration = sampler_.sample(node.task->duration_distribution);
         log_event(time, token_component, node, "task_start");
 
-        schedule(ScheduledEvent{time + duration, next_order(), ScheduledEventType::FinishTask, node.id, token_entity});
+        schedule(ScheduledEvent{time + duration, next_order(), ScheduledEventType::FinishTask, node.id, token_entity, std::nullopt});
         if (node.task->type == TaskType::Split)
         {
             schedule_split_outputs(token_entity, node, time, duration);
         }
     }
 
-    [[nodiscard]] std::string select_exclusive_gateway_target(const NodeDefinition& node);
+    [[nodiscard]] std::string select_exclusive_gateway_target(const NodeDefinition& node, entt::entity token_entity);
     [[nodiscard]] entt::entity create_restored_token(const RestorableTokenSnapshot& snapshot);
     [[nodiscard]] std::size_t advance_combine_outputs(const std::string& task_id, double ratio);
     [[nodiscard]] std::size_t advance_split_outputs(const std::string& task_id, double ratio);
@@ -1171,9 +1178,10 @@ void Engine::RunState::schedule_start_events()
         const auto& start_node = flux::node(model_, start_id);
         if (start_node.generator->type == InitiatorType::External)
         {
-            for (const double time : start_node.generator->external_times)
+            for (std::size_t index = 0; index < start_node.generator->external_records.size(); ++index)
             {
-                schedule(ScheduledEvent{time, next_order(), ScheduledEventType::GenerateEntity, start_id, entt::null});
+                const auto& record = start_node.generator->external_records[index];
+                schedule(ScheduledEvent{record.time, next_order(), ScheduledEventType::GenerateEntity, start_id, entt::null, index});
             }
             continue;
         }
@@ -1181,7 +1189,7 @@ void Engine::RunState::schedule_start_events()
         double next_time = 0.0;
         for (std::size_t index = 0; index < start_node.generator->entity_count; ++index)
         {
-            schedule(ScheduledEvent{next_time, next_order(), ScheduledEventType::GenerateEntity, start_id, entt::null});
+            schedule(ScheduledEvent{next_time, next_order(), ScheduledEventType::GenerateEntity, start_id, entt::null, std::nullopt});
             if (index + 1 < start_node.generator->entity_count)
             {
                 next_time += sampler_.sample(start_node.generator->interval_distribution);
@@ -1210,7 +1218,13 @@ void Engine::RunState::handle_generate_entity(const ScheduledEvent& event)
 {
     const auto& start_node = flux::node(model_, event.node_id);
     const auto entity_id = next_entity_id(start_node.id, start_node.generator->entity_type);
-    const auto token_entity = create_token(entity_id, start_node.generator->entity_type, entity_id + ".t0", event.time);
+    std::unordered_map<std::string, std::string> properties;
+    if (event.external_record_index.has_value())
+    {
+        properties = start_node.generator->external_records.at(*event.external_record_index).properties;
+    }
+
+    const auto token_entity = create_token(entity_id, start_node.generator->entity_type, entity_id + ".t0", event.time, std::move(properties));
     const auto token_component = token(token_entity);
     ++result_.generated_entities;
     log_event(event.time, token_component, start_node, "entity_generated");
@@ -1292,9 +1306,9 @@ void Engine::RunState::handle_arrive_node(const ScheduledEvent& event)
 
     if (node.type == NodeType::ExclusiveGateway)
     {
-        const auto selected_target = select_exclusive_gateway_target(node);
+        const auto selected_target = select_exclusive_gateway_target(node, event.token);
         log_event(event.time, token_component, node, "gateway_route");
-        schedule(ScheduledEvent{event.time, next_order(), ScheduledEventType::ArriveNode, selected_target, event.token});
+        schedule(ScheduledEvent{event.time, next_order(), ScheduledEventType::ArriveNode, selected_target, event.token, std::nullopt});
         return;
     }
 }
@@ -1358,11 +1372,40 @@ void Engine::RunState::handle_finish_task(const ScheduledEvent& event)
     schedule_token_to_outgoing(node.id, event.token, event.time);
 }
 
-std::string Engine::RunState::select_exclusive_gateway_target(const NodeDefinition& node)
+std::string Engine::RunState::select_exclusive_gateway_target(const NodeDefinition& node, entt::entity token_entity)
 {
     if (!node.gateway_criteria.has_value())
     {
         throw std::runtime_error("Exclusive gateway '" + node.id + "' must define routing criteria before execution.");
+    }
+
+    if (*node.gateway_criteria == GatewayCriteria::Property)
+    {
+        if (!node.gateway_property_name.has_value() || node.gateway_property_name->empty())
+        {
+            throw std::runtime_error("Exclusive gateway '" + node.id + "' must define '_propertyName' when '_criteria=property'.");
+        }
+
+        const auto& token_component = token(token_entity);
+        const auto property = token_component.properties.find(*node.gateway_property_name);
+        if (property == token_component.properties.end())
+        {
+            throw std::runtime_error("Entity '" + token_component.entity_id + "' is missing gateway property '" + *node.gateway_property_name + "' for exclusive gateway '" + node.id + "'.");
+        }
+
+        const auto& flow_ids = model_.outgoing_flow_ids.at(node.id);
+        for (const auto& flow_id : flow_ids)
+        {
+            const auto& candidate = flux::flow(model_, flow_id);
+            if (candidate.property_value == property->second)
+            {
+                return candidate.target_id;
+            }
+        }
+
+        throw std::runtime_error(
+            "Entity '" + token_component.entity_id + "' property '" + *node.gateway_property_name + "' value '" + property->second +
+            "' does not match any outgoing branch of exclusive gateway '" + node.id + "'.");
     }
 
     if (*node.gateway_criteria != GatewayCriteria::Weight)

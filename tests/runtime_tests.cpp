@@ -87,6 +87,23 @@ TEST_CASE("External initiator generates entities from sorted csv times", "[runti
     REQUIRE(task_arrivals[3].time == 7.5);
 }
 
+TEST_CASE("Property splitter routes entities by external csv property", "[runtime][splitter-property]")
+{
+    const auto result = flux::test_support::run_model(std::filesystem::path("data") / "tests" / "property_splitter.bpmn");
+
+    const auto task_starts = flux::test_support::select_events(result, "task_start");
+    REQUIRE(task_starts.size() == 4);
+    REQUIRE(task_starts[0].node_id == "Task_get");
+    REQUIRE(task_starts[1].node_id == "Task_put");
+    REQUIRE(task_starts[2].node_id == "Task_put");
+    REQUIRE(task_starts[3].node_id == "Task_get");
+
+    REQUIRE(task_starts[0].entity_id == "Event_property_case_0");
+    REQUIRE(task_starts[1].entity_id == "Event_property_case_1");
+    REQUIRE(task_starts[2].entity_id == "Event_property_case_2");
+    REQUIRE(task_starts[3].entity_id == "Event_property_case_3");
+}
+
 TEST_CASE("Arbitration model covers oldest-feasible waiting rules", "[runtime][same-timestamp]")
 {
     const auto result = flux::test_support::run_model(std::filesystem::path("data") / "tests" / "arbitration.bpmn");

@@ -42,8 +42,8 @@
 
 1. `Engine::run` 先创建 `RunState`，初始化资源运行态，并调度所有开始事件。
 2. 事件按 `(time, order)` 从优先队列里取出；同一时间戳的事件会作为一个批次一起处理。
-3. `GenerateEntity` 负责创建 token，并把它送到开始事件的下游节点。
-4. `ArriveNode` 负责判断 token 到达的是任务、结束事件还是网关；如果是任务，再决定直接启动、进入等待，还是走 combine / release-resource 这些特殊路径。
+3. `GenerateEntity` 负责创建 token，并把它送到开始事件的下游节点；如果开始事件是 `external`，则会把 CSV 当前行里除 `time` 外的列一起挂到 token 属性上。
+4. `ArriveNode` 负责判断 token 到达的是任务、结束事件还是网关；如果是任务，再决定直接启动、进入等待，还是走 combine / release-resource 这些特殊路径；如果是网关，则按 `_criteria` 执行权重随机路由或属性精确匹配路由。
 5. `FinishTask` 负责释放资源、更新 held resources 或 combine 状态、记录完成事件，再把 token 调度到下游。
 6. 每个时间批次的原始事件处理完以后，才统一执行一次 `resolve_pending`，这就是 "oldest feasible first at the same timestamp" 语义的保证。
 
@@ -107,7 +107,7 @@
 
 `ProcessToken` 表示流程实体当前对应的 token 本体。
 
-里面记录的是实体 id、实体类型、token id 和创建时间。可以把它理解成“流程里正在流动的那张卡片”。
+里面记录的是实体 id、实体类型、token id、创建时间，以及外部开始事件注入的字符串属性。可以把它理解成“流程里正在流动的那张卡片”。
 
 **`HeldResources`**
 

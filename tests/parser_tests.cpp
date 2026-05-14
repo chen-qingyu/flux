@@ -46,7 +46,11 @@ TEST_CASE("Parser reads external generator times", "[parser][external]")
     REQUIRE(start.generator.has_value());
     REQUIRE(start.generator->type == flux::InitiatorType::External);
     REQUIRE(start.generator->entity_type == "customer");
-    REQUIRE(start.generator->external_times == std::vector<double>{1.0, 3.0, 3.0, 7.5});
+    REQUIRE(start.generator->external_records.size() == 4);
+    REQUIRE(start.generator->external_records[0].time == 1.0);
+    REQUIRE(start.generator->external_records[1].time == 3.0);
+    REQUIRE(start.generator->external_records[2].time == 3.0);
+    REQUIRE(start.generator->external_records[3].time == 7.5);
 }
 
 TEST_CASE("Parser reads weighted splitter model", "[parser][splitter]")
@@ -65,6 +69,29 @@ TEST_CASE("Parser reads weighted splitter model", "[parser][splitter]")
     REQUIRE(flow_1.weight == 1.0);
     REQUIRE(flow_2.weight == 2.0);
     REQUIRE(flow_3.weight == 3.0);
+}
+
+TEST_CASE("Parser reads property splitter model", "[parser][splitter-property]")
+{
+    const auto model = flux::Parser::parse(std::filesystem::path("data") / "tests" / "property_splitter.bpmn");
+
+    const auto& start = flux::node(model, "Event_property");
+    REQUIRE(start.generator.has_value());
+    REQUIRE(start.generator->type == flux::InitiatorType::External);
+    REQUIRE(start.generator->external_records.size() == 4);
+    REQUIRE(start.generator->external_records[0].properties.at("action") == "get");
+    REQUIRE(start.generator->external_records[1].properties.at("action") == "put");
+    REQUIRE(start.generator->external_records[2].properties.at("action") == "put");
+    REQUIRE(start.generator->external_records[3].properties.at("action") == "get");
+
+    const auto& gateway = flux::node(model, "Gateway_property");
+    REQUIRE(gateway.gateway_criteria == flux::GatewayCriteria::Property);
+    REQUIRE(gateway.gateway_property_name == std::optional<std::string>{"action"});
+
+    const auto& get_flow = flux::flow(model, "Flow_property_get");
+    const auto& put_flow = flux::flow(model, "Flow_property_put");
+    REQUIRE(get_flow.property_value == std::optional<std::string>{"get"});
+    REQUIRE(put_flow.property_value == std::optional<std::string>{"put"});
 }
 
 TEST_CASE("Parser reads transport task model", "[parser][transport]")

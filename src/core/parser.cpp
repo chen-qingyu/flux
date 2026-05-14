@@ -7,6 +7,7 @@
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -112,7 +113,7 @@ private:
         return properties;
     }
 
-    [[nodiscard]] std::vector<double> read_external_times(const std::string& start_id) const
+    [[nodiscard]] std::vector<ExternalRecord> read_external_records(const std::string& start_id) const
     {
         const auto csv_path = std::filesystem::current_path() / "data" / "external" / (start_id + ".csv");
         if (!std::filesystem::exists(csv_path))
@@ -128,7 +129,7 @@ private:
             throw std::runtime_error("Start event '" + start_id + "' external csv file must have 'time' as the first column header.");
         }
 
-        std::vector<double> times;
+        std::vector<ExternalRecord> records;
         for (const auto& row : reader)
         {
             const auto parsed = row[0].get<double>();
@@ -136,11 +137,19 @@ private:
             {
                 throw std::runtime_error("Start event '" + start_id + "' external csv has invalid value.");
             }
-            times.push_back(parsed);
+
+            ExternalRecord record;
+            record.time = parsed;
+            for (std::size_t index = 1; index < headers.size(); ++index)
+            {
+                record.properties.insert_or_assign(headers[index], row[index].get<std::string>());
+            }
+            records.push_back(std::move(record));
         }
 
-        std::stable_sort(times.begin(), times.end());
-        return times;
+        std::stable_sort(records.begin(), records.end(), [](const ExternalRecord& left, const ExternalRecord& right)
+                         { return left.time < right.time; });
+        return records;
     }
 
     [[nodiscard]] double read_required_double(const PropertyMap& properties, const std::string& key, const std::string& context) const
@@ -284,6 +293,11 @@ private:
             return GatewayCriteria::Weight;
         }
 
+        if (lower_copy(found->second) == "property")
+        {
+            return GatewayCriteria::Property;
+        }
+
         throw std::runtime_error(context + " uses unsupported property '_criteria' value '" + found->second + "'.");
     }
 
@@ -396,7 +410,7 @@ private:
         if (initiator_type == "external")
         {
             generator.type = InitiatorType::External;
-            generator.external_times = read_external_times(start_id);
+            generator.external_records = read_external_records(start_id);
             return generator;
         }
 
@@ -627,6 +641,10 @@ private:
         definition.name = child.attribute("name").value();
         definition.type = NodeType::ExclusiveGateway;
         definition.gateway_criteria = read_optional_gateway_criteria(properties, "Exclusive gateway '" + definition.id + "'");
+        if (definition.gateway_criteria == GatewayCriteria::Property)
+        {
+            definition.gateway_property_name = read_required_text(properties, "_propertyName", "Exclusive gateway '" + definition.id + "'");
+        }
         model_.nodes.insert_or_assign(definition.id, std::move(definition));
     }
 
@@ -756,7 +774,22 @@ private:
             for (const auto& flow_id : found->second)
             {
                 auto& flow = flow_by_id(flow_id);
-                flow.weight = parse_required_positive_double(flow.name, "Sequence flow '" + flow.id + "'");
+                if (definition.gateway_criteria == GatewayCriteria::Weight)
+                {
+                    flow.weight = parse_required_positive_double(flow.name, "Sequence flow '" + flow.id + "'");
+                    flow.property_value.reset();
+                    continue;
+                }
+
+                if (definition.gateway_criteria == GatewayCriteria::Property)
+                {
+                    if (flow.name.empty())
+                    {
+                        throw std::runtime_error("Sequence flow '" + flow.id + "' must define a non-empty property value in sequence flow name.");
+                    }
+                    flow.property_value = flow.name;
+                    flow.weight.reset();
+                }
             }
         }
     }
@@ -785,7 +818,7 @@ private:
                     {
                         throw std::runtime_error("Start event '" + node_id + "' must generate at least one entity.");
                     }
-                    if (definition.generator->type == InitiatorType::External && definition.generator->external_times.empty())
+                    if (definition.generator->type == InitiatorType::External && definition.generator->external_records.empty())
                     {
                         throw std::runtime_error("Start event '" + node_id + "' must generate at least one entity.");
                     }
@@ -892,6 +925,28 @@ private:
                             if (!flow.weight.has_value())
                             {
                                 throw std::runtime_error("Sequence flow '" + flow.id + "' must define a positive numeric weight in sequence flow name.");
+                            }
+                        }
+                    }
+                    if (definition.gateway_criteria == GatewayCriteria::Property)
+                    {
+                        if (!definition.gateway_property_name.has_value() || definition.gateway_property_name->empty())
+                        {
+                            throw std::runtime_error("Exclusive gateway '" + node_id + "' must define '_propertyName' when '_criteria=property'.");
+                        }
+
+                        std::unordered_set<std::string> property_values;
+                        const auto flow_ids = model_.outgoing_flow_ids.find(node_id);
+                        for (const auto& flow_id : flow_ids->second)
+                        {
+                            const auto& flow = flow_by_id(flow_id);
+                            if (!flow.property_value.has_value() || flow.property_value->empty())
+                            {
+                                throw std::runtime_error("Sequence flow '" + flow.id + "' must define a non-empty property value in sequence flow name.");
+                            }
+                            if (!property_values.insert(*flow.property_value).second)
+                            {
+                                throw std::runtime_error("Exclusive gateway '" + node_id + "' has duplicate property branch name '" + *flow.property_value + "'.");
                             }
                         }
                     }

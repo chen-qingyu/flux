@@ -29,7 +29,7 @@ BPMN File -> Parser -> Model (ECS Graph) -> Engine (DOD + EnTT) -> Reporter -> O
 - 显式资源生命周期：`acquireResource`、`releaseResource`
 - 合并活动：按比例 `ratio` 进行合并
 - 拆分活动：按比例 `ratio` 进行拆分，或者按最近一次合并记录进行 `restore`
-- 网关语义：`exclusiveGateway`，支持按权重随机路由的分流器
+- 网关语义：`exclusiveGateway`，支持按权重随机路由，或按属性精确分流
 - 输出报表，包括实体事件日志、资源占用时间线、资源利用率等信息
 - 时间是无量纲时间，单位可由用户定义
 
@@ -209,19 +209,24 @@ python run.py data/demo.bpmn --seed 42
 
 ### 网关
 
-必填属性：
+必填：`_criteria`
 
-- `_criteria`
+支持类型：`weight`、`property`
 
-支持类型：`weight`
+说明：用于根据配置把实体分流到不同出边。
 
-规则：
+- 当 `_criteria=weight` 时：按出边权重比例随机分配实体。
+  - 要求：每条出边的 `sequenceFlow.name` 为正数权重（例如 `1`、`2`、`3.5`）。
+  - 解析阶段会校验 `_criteria` 是否存在以及每条出边是否都提供了正数权重。
 
-- 当 `_criteria=weight` 时，实体会按各出边权重占比随机进入其中一条分支
-- 每条从分流器流出的 `sequenceFlow` 都必须在 `name` 中填写正数权重，例如 `1`、`2`、`3.5`
-- 解析阶段会校验 `_criteria` 是否存在，以及每条出边是否都提供了正数权重
+- 当 `_criteria=property` 时：按 `_propertyName` 的属性值做精确匹配分支。
+  - 要求：必须提供 `_propertyName`；每条出边的 `sequenceFlow.name` 必须为非空且在同一网关下唯一。
+  - 运行时如果实体缺少该属性或属性值无法匹配任何出边，会直接报错终止。
 
-例如，三个出边权重分别为 `1`、`2`、`3` 时，长期比例接近 `1/6`、`2/6`、`3/6`。
+规则举例：
+
+- 权重示例：三条出边权重为 `1`、`2`、`3`，长期比例接近 `1/6`、`2/6`、`3/6`。
+- 属性示例：外部 CSV 含 `action` 列，网关配置 `_criteria=property` 和 `_propertyName=action`，若两条出边 `sequenceFlow.name` 为 `get`、`put`，则 `action=get` 的实体走 `get` 分支，`action=put` 的实体走 `put` 分支。
 
 ### 资源
 

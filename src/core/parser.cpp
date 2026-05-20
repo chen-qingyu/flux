@@ -58,13 +58,6 @@ private:
         return name;
     }
 
-    [[nodiscard]] std::string lower_copy(std::string value) const
-    {
-        std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch)
-                       { return static_cast<char>(std::tolower(ch)); });
-        return value;
-    }
-
     [[nodiscard]] std::string read_required_attribute(const pugi::xml_node& node, const char* attribute_name, const char* context) const
     {
         const auto attribute = node.attribute(attribute_name);
@@ -207,7 +200,7 @@ private:
 
     [[nodiscard]] bool read_required_bool(const PropertyMap& properties, const std::string& key, const std::string& context) const
     {
-        const auto value = lower_copy(read_required_text(properties, key, context));
+        const auto value = read_required_text(properties, key, context);
         if (value == "true")
         {
             return true;
@@ -288,12 +281,12 @@ private:
             return std::nullopt;
         }
 
-        if (lower_copy(found->second) == "weight")
+        if (found->second == "weight")
         {
             return GatewayCriteria::Weight;
         }
 
-        if (lower_copy(found->second) == "property")
+        if (found->second == "property")
         {
             return GatewayCriteria::Property;
         }
@@ -395,7 +388,7 @@ private:
         const auto start_id = read_required_attribute(node, "id", "Start event");
         const auto context = "Start event '" + start_id + "'";
 
-        const auto initiator_type = lower_copy(read_required_text(properties, "_initiatorType", context));
+        const auto initiator_type = read_required_text(properties, "_initiatorType", context);
         GeneratorSpec generator;
         generator.entity_type = read_required_text(properties, "_entityType", context);
 
@@ -420,7 +413,7 @@ private:
 
     [[nodiscard]] TaskType read_task_type(const std::string& value, const std::string& context) const
     {
-        const auto task_type = lower_copy(value);
+        const auto& task_type = value;
         if (task_type == "delay")
         {
             return TaskType::Delay;
@@ -429,11 +422,11 @@ private:
         {
             return TaskType::Transport;
         }
-        if (task_type == "acquireresource")
+        if (task_type == "acquireResource")
         {
             return TaskType::AcquireResource;
         }
-        if (task_type == "releaseresource")
+        if (task_type == "releaseResource")
         {
             return TaskType::ReleaseResource;
         }
@@ -534,7 +527,7 @@ private:
         const auto properties = read_properties(node);
         const auto context = "Resource '" + read_required_attribute(node, "id", "Resource") + "'";
 
-        const auto resource_type = lower_copy(read_required_text(properties, "_resourceType", context));
+        const auto resource_type = read_required_text(properties, "_resourceType", context);
         if (resource_type != "resource")
         {
             throw std::runtime_error(context + " uses unsupported _resourceType '" + resource_type + "'.");

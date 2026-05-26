@@ -171,3 +171,35 @@ TEST_CASE("Parser reads combine and split ratio task model", "[parser][combine-s
     REQUIRE(split.task->split->entity_type == "box");
     REQUIRE(split.task->split->one_off == false);
 }
+
+TEST_CASE("Parser reads split property task model", "[parser][split-property]")
+{
+    const auto model = flux::Parser::parse(std::filesystem::path("data") / "tests" / "split_property.bpmn");
+
+    const auto& start = flux::node(model, "Event_split_property");
+    REQUIRE(start.generator.has_value());
+    REQUIRE(start.generator->type == flux::InitiatorType::External);
+    REQUIRE(start.generator->external_records.size() == 3);
+    REQUIRE(start.generator->external_records[0].time == 0.0);
+    REQUIRE(start.generator->external_records[0].properties.at("qty") == "1");
+    REQUIRE(start.generator->external_records[0].properties.at("route") == "put");
+    REQUIRE(start.generator->external_records[1].time == 1.0);
+    REQUIRE(start.generator->external_records[1].properties.at("qty") == "2");
+    REQUIRE(start.generator->external_records[1].properties.at("route") == "put");
+    REQUIRE(start.generator->external_records[2].time == 2.0);
+    REQUIRE(start.generator->external_records[2].properties.at("qty") == "3");
+    REQUIRE(start.generator->external_records[2].properties.at("route") == "get");
+
+    const auto& split = flux::node(model, "Activity_split_property");
+    REQUIRE(split.task.has_value());
+    REQUIRE(split.task->type == flux::TaskType::Split);
+    REQUIRE(split.task->split.has_value());
+    REQUIRE(split.task->split->method == flux::SplitMethod::Property);
+    REQUIRE(split.task->split->property_name == std::optional<std::string>{"qty"});
+    REQUIRE(split.task->split->entity_type.empty());
+    REQUIRE(split.task->split->one_off == true);
+
+    const auto& gateway = flux::node(model, "Gateway_route");
+    REQUIRE(gateway.gateway_criteria == flux::GatewayCriteria::Property);
+    REQUIRE(gateway.gateway_property_name == std::optional<std::string>{"route"});
+}

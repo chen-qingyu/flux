@@ -104,6 +104,30 @@ TEST_CASE("Property splitter routes entities by external csv property", "[runtim
     REQUIRE(task_starts[3].entity_id == "Event_property_case_3");
 }
 
+TEST_CASE("Split property duplicates entities by external csv count and keeps properties", "[runtime][split-property]")
+{
+    const auto result = flux::test_support::run_model(std::filesystem::path("data") / "tests" / "split_property.bpmn");
+
+    const auto task_starts = flux::test_support::select_events(result, "task_start");
+    const auto exits = flux::test_support::select_events(result, "entity_exit");
+    const auto count_task_starts = [](const auto& rows, const std::string& node_id)
+    {
+        return std::count_if(rows.begin(), rows.end(), [&](const auto& row)
+                             { return row.node_id == node_id; });
+    };
+
+    REQUIRE(count_task_starts(task_starts, "Activity_split_property") == 3);
+    REQUIRE(count_task_starts(task_starts, "Task_get") == 3);
+    REQUIRE(count_task_starts(task_starts, "Task_put") == 3);
+
+    REQUIRE(exits.size() == 6);
+    for (const auto& row : exits)
+    {
+        REQUIRE(row.node_id == "Event_end");
+        REQUIRE(row.entity_type == "order");
+    }
+}
+
 TEST_CASE("Arbitration model covers oldest-feasible waiting rules", "[runtime][same-timestamp]")
 {
     const auto result = flux::test_support::run_model(std::filesystem::path("data") / "tests" / "arbitration.bpmn");

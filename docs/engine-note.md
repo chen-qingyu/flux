@@ -140,7 +140,7 @@
 
 `schedule_split_outputs` 负责 split 任务生成下游 token 的具体细节。
 
-如果是 `_method=ratio`，它会直接派生新的子 token；如果是 `_method=restore`，它会从 combine 历史里把原成员恢复出来。之后再按 `one_off` 或均匀间隔把这些输出送往下游。
+如果是 `_method=ratio`，它会直接派生新的子 token；如果是 `_method=property`，它会按 token 上指定属性的正整数值派生同类型子 token，并保留原属性；如果是 `_method=restore`，它会从 combine 历史里把原成员恢复出来。之后再按 `one_off` 或均匀间隔把这些输出送往下游。
 
 ### `PendingManager`
 

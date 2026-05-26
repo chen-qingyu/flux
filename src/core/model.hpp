@@ -57,7 +57,7 @@ enum class SplitMethod
 {
     Ratio,
     Restore,
-    Quantity,
+    Property,
 };
 
 enum class GatewayCriteria
@@ -103,6 +103,7 @@ struct SplitSpec
     double ratio{0.0};
     bool one_off{true};
     std::string entity_type;
+    std::optional<std::string> property_name;
 };
 
 // 任务配置同时承载执行时间、资源策略和运输距离等可选语义。

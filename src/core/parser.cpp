@@ -474,8 +474,9 @@ private:
                 return split;
             case SplitMethod::Restore:
                 return split;
-            case SplitMethod::Quantity:
-                throw std::runtime_error(context + " does not support split method 'quantity' yet.");
+            case SplitMethod::Property:
+                split.property_name = read_required_text(properties, "_propertyName", context);
+                return split;
         }
 
         throw std::runtime_error(context + " uses unsupported split method.");

@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <deque>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <queue>
 #include <random>
@@ -1130,6 +1131,46 @@ void Engine::RunState::schedule_split_outputs(entt::entity token_entity, const N
         {
             const auto entity_id = next_entity_id(node.id, node.task->split->entity_type);
             const auto child = create_token(entity_id, node.task->split->entity_type, entity_id + ".t0", start_time);
+            outputs.push_back(child);
+        }
+    }
+    else if (node.task->split->method == SplitMethod::Property)
+    {
+        const auto& parent = token(token_entity);
+        const auto& property_name = node.task->split->property_name.value();
+        const auto found = parent.properties.find(property_name);
+        const auto invalid_count = [&]()
+        {
+            return std::runtime_error("Task '" + node.id + "' requires token property '" + property_name + "' to be a positive integer.");
+        };
+
+        if (found == parent.properties.end() || found->second.empty())
+        {
+            throw invalid_count();
+        }
+
+        std::size_t parsed_length = 0;
+        unsigned long long parsed_count = 0;
+        try
+        {
+            parsed_count = std::stoull(found->second, &parsed_length);
+        }
+        catch (const std::exception&)
+        {
+            throw invalid_count();
+        }
+
+        if (parsed_length != found->second.size() || parsed_count == 0 || parsed_count > std::numeric_limits<std::size_t>::max())
+        {
+            throw invalid_count();
+        }
+
+        const auto output_count = static_cast<std::size_t>(parsed_count);
+        outputs.reserve(output_count);
+        for (std::size_t index = 0; index < output_count; ++index)
+        {
+            const auto entity_id = next_entity_id(node.id, parent.entity_type);
+            const auto child = create_token(entity_id, parent.entity_type, entity_id + ".t0", start_time, parent.properties);
             outputs.push_back(child);
         }
     }

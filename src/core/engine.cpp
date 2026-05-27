@@ -840,11 +840,6 @@ private:
         });
     }
 
-    void apply_allocation(const std::vector<std::string>& resource_ids, double time, double wait_time, const std::string& entity_id, const std::string& task_id)
-    {
-        resources_.apply_allocation(registry_, result_, resource_ids, time, wait_time, entity_id, task_id);
-    }
-
     void apply_release(const std::vector<std::string>& resource_ids, double time, const std::string& entity_id, const std::string& task_id)
     {
         resources_.apply_release(registry_, result_, resource_ids, time, entity_id, task_id);
@@ -864,7 +859,7 @@ private:
         const auto& token_component = token(token_entity);
         if (node.task->type != TaskType::ReleaseResource)
         {
-            apply_allocation(allocation, time, wait_time, token_component.entity_id, node.id);
+            resources_.apply_allocation(registry_, result_, allocation, time, wait_time, token_component.entity_id, node.id);
         }
         registry_.emplace_or_replace<ActiveTask>(token_entity, ActiveTask{node.id, allocation});
 
@@ -1136,14 +1131,11 @@ void Engine::RunState::schedule_split_outputs(entt::entity token_entity, const N
         const auto& parent = token(token_entity);
         const auto& property_name = node.task->split->property_name.value();
         const auto found = parent.properties.find(property_name);
-        const auto invalid_count = [&]()
-        {
-            return std::runtime_error("Task '" + node.id + "' requires token property '" + property_name + "' to be a positive integer.");
-        };
+        const auto invalid_count = "Task '" + node.id + "' requires token property '" + property_name + "' to be a positive integer.";
 
         if (found == parent.properties.end() || found->second.empty())
         {
-            throw invalid_count();
+            throw std::runtime_error(invalid_count);
         }
 
         std::size_t parsed_length = 0;
@@ -1154,12 +1146,12 @@ void Engine::RunState::schedule_split_outputs(entt::entity token_entity, const N
         }
         catch (const std::exception&)
         {
-            throw invalid_count();
+            throw std::runtime_error(invalid_count);
         }
 
         if (parsed_length != found->second.size() || parsed_count == 0 || parsed_count > std::numeric_limits<std::size_t>::max())
         {
-            throw invalid_count();
+            throw std::runtime_error(invalid_count);
         }
 
         const auto output_count = static_cast<std::size_t>(parsed_count);

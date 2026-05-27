@@ -124,13 +124,10 @@ struct PendingCandidate
 {
     std::uint64_t order{0};
     PendingQueueKey key;
-};
 
-struct PendingCandidateCompare
-{
-    bool operator()(const PendingCandidate& left, const PendingCandidate& right) const
+    [[nodiscard]] bool operator<(const PendingCandidate& other) const
     {
-        return left.order > right.order;
+        return order > other.order;
     }
 };
 
@@ -705,7 +702,7 @@ private:
 
     const Model& model_;
     PendingRequestMap pending_requests_;
-    std::priority_queue<PendingCandidate, std::vector<PendingCandidate>, PendingCandidateCompare> pending_candidates_;
+    std::priority_queue<PendingCandidate> pending_candidates_;
     std::unordered_map<std::string, std::vector<std::string>> task_queue_ids_by_resource_;
     bool pending_resolution_needed_{false};
 };

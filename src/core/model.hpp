@@ -50,7 +50,7 @@ enum class TaskType
 enum class CombineMethod
 {
     Ratio,
-    Quantity,
+    GroupRatio,
 };
 
 enum class SplitMethod
@@ -95,6 +95,9 @@ struct CombineSpec
     CombineMethod method{CombineMethod::Ratio};
     double ratio{0.0};
     std::string entity_type;
+    bool use_quantity_property{false};
+    std::optional<std::string> quantity_property;
+    std::optional<std::string> group_property;
 };
 
 struct SplitSpec

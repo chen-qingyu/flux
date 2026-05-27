@@ -27,7 +27,7 @@ BPMN File -> Parser -> Model (ECS Graph) -> Engine (DOD + EnTT) -> Reporter -> O
 - 固定随机种子，结果可复现
 - 资源策略：`All`、`Any`
 - 显式资源生命周期：`acquireResource`、`releaseResource`
-- 合并活动：按比例 `ratio` 进行合并
+- 合并活动：支持按比例 `ratio` 合并，或按属性分组后再按比例 `groupRatio` 合并，并可按数量属性计算等效实体数
 - 拆分活动：按比例 `ratio` 进行拆分，或者按最近一次合并记录进行 `restore`
 - 网关语义：`exclusiveGateway`，支持按权重随机路由，或按属性精确分流
 - 输出报表，包括实体事件日志、资源占用时间线、资源利用率等信息
@@ -131,6 +131,7 @@ python run.py data/demo.bpmn --seed 42
 - 按开始事件 id 读取文件 `data/external/<startEvent id>.csv`
 - CSV 必须有表头，且第一列表头必须是 `time`
 - 生成时刻取自 `time` 列，解析阶段会按 `time` 升序稳定排序后再调度生成
+- 除 `time` 外的其他列会作为字符串属性挂到生成实体上，可供属性网关、属性拆分、数量型合并等能力读取
 
 ### 分布属性
 
@@ -186,14 +187,16 @@ python run.py data/demo.bpmn --seed 42
 
 #### combine
 
-必填：`_method`、`_distributionType`
+必填：`_method`、`_distributionType`、`_useQuantityProperty`、`_entityType`、`_ratio`
 
-说明：按累计阈值合并。处理到第 `n` 个输入实体时，累计产出数为 `floor(n / _ratio)`；只有当这个累计值增长时才会启动新的合并输出。不足 1 个完整输出的尾差会继续等待，直到后续输入跨过阈值；如果流程结束仍未跨过阈值，则尾差直接丢弃。该任务也可以绑定资源。
+说明：按累计阈值合并。每次产出 1 个新实体都对应 1 次独立的 combine 执行，因此会各自消耗一份配置的处理时长，也会各自参与资源申请。`_useQuantityProperty=true|false` 表示是否把某个实体属性解释为“等效实体数量”；当 `_useQuantityProperty=true` 时，还必须提供 `_quantityProperty`，且属性值必须是正整数。尾差会继续等待，直到后续输入跨过阈值；如果流程结束仍未跨过阈值，则尾差直接丢弃。该任务也可以绑定资源。
 
 支持方法：
 
-- `_method=ratio`：还需要 `_ratio` 和新的 `_entityType`，表示 `N -> 1` 合并。`_ratio` 支持大于等于 `1` 的整数或浮点数，例如 `38` 个输入经过 `_ratio=3.8` 的合并后会产生 `10` 个新实体
-- `_method=quantity`：目前只是占位，解析阶段会直接报不支持
+- `_method=ratio`：按全任务累计做 `N -> 1` 合并。未启用数量属性时，每个到达实体记作 `1` 个等效实体；启用后，等效实体数取自 `_quantityProperty`。`_ratio` 支持大于等于 `1` 的整数或浮点数，例如 `38` 个等效实体经过 `_ratio=3.8` 的合并后会产生 `10` 个新实体
+- `_method=groupRatio`：还需要 `_groupProperty`，系统会先按该属性值分组，再在每个分组内独立按比例合并；若启用了数量属性，则每个分组累计的是等效实体数
+
+`restore` 与数量型合并兼容：如果某个实体通过数量属性贡献了多个等效实体，后续 `split restore` 会按“实际被消费的等效实体数”恢复。例如 `qty=12`、`_ratio=5` 时可产出 `2` 个合并实体，后续还原时会恢复成 `5 + 5` 个实体。
 
 #### split
 

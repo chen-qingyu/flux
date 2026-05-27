@@ -267,6 +267,56 @@ TEST_CASE("Floating-point ratios work across combine delay split pipeline", "[ru
     }
 }
 
+TEST_CASE("Quantity-aware combine restore expands consumed equivalent entities", "[runtime][combine][quantity][restore]")
+{
+    const auto result = flux::test_support::run_model(std::filesystem::path("data") / "tests" / "combine_quantity_restore.bpmn");
+    const auto task_starts = flux::test_support::select_events(result, "task_start");
+    const auto exits = flux::test_support::select_events(result, "entity_exit");
+
+    const auto combine_starts = std::count_if(task_starts.begin(), task_starts.end(), [](const auto& row)
+                                              { return row.node_id == "Activity_combine"; });
+    const auto restore_starts = std::count_if(task_starts.begin(), task_starts.end(), [](const auto& row)
+                                              { return row.node_id == "Activity_restore"; });
+
+    REQUIRE(result.generated_entities == 1);
+    REQUIRE(combine_starts == 2);
+    REQUIRE(restore_starts == 2);
+    REQUIRE(exits.size() == 10);
+
+    for (const auto& row : exits)
+    {
+        REQUIRE(row.node_id == "Event_end");
+        REQUIRE(row.entity_type == "order");
+        REQUIRE(row.time == 3.0);
+    }
+}
+
+TEST_CASE("Group-ratio combine groups quantities independently", "[runtime][combine][group-ratio]")
+{
+    const auto result = flux::test_support::run_model(std::filesystem::path("data") / "tests" / "group_ratio_restore.bpmn");
+    const auto task_starts = flux::test_support::select_events(result, "task_start");
+    const auto exits = flux::test_support::select_events(result, "entity_exit");
+
+    const auto count_task_starts = [&](const std::string& node_id)
+    {
+        return std::count_if(task_starts.begin(), task_starts.end(), [&](const auto& row)
+                             { return row.node_id == node_id; });
+    };
+
+    REQUIRE(result.generated_entities == 3);
+    REQUIRE(count_task_starts("Activity_combine") == 8);
+    REQUIRE(count_task_starts("Activity_restore") == 8);
+    REQUIRE(count_task_starts("Task_red") == 10);
+    REQUIRE(count_task_starts("Task_blue") == 6);
+    REQUIRE(exits.size() == 16);
+
+    for (const auto& row : exits)
+    {
+        REQUIRE(row.node_id == "Event_end");
+        REQUIRE(row.entity_type == "order");
+    }
+}
+
 #ifdef NDEBUG
 TEST_CASE("Multisrc runtime stays under three seconds", "[runtime][perf]")
 {

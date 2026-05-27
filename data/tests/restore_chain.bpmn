@@ -21,6 +21,7 @@
                     <camunda:property name="_taskType" value="combine" />
                     <camunda:property name="_method" value="ratio" />
                     <camunda:property name="_ratio" value="2" />
+                    <camunda:property name="_useQuantityProperty" value="false" />
                     <camunda:property name="_distributionType" value="static" />
                     <camunda:property name="_staticInterval" value="0" />
                     <camunda:property name="_entityType" value="pallet" />
@@ -35,6 +36,7 @@
                     <camunda:property name="_taskType" value="combine" />
                     <camunda:property name="_method" value="ratio" />
                     <camunda:property name="_ratio" value="2" />
+                    <camunda:property name="_useQuantityProperty" value="false" />
                     <camunda:property name="_distributionType" value="static" />
                     <camunda:property name="_staticInterval" value="0" />
                     <camunda:property name="_entityType" value="truck" />

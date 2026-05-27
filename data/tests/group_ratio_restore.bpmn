@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+    xmlns:camunda="http://camunda.org/schema/1.0/bpmn" id="Definitions_GroupRatioRestore" targetNamespace="http://bpmn.io/schema/bpmn">
+    <bpmn:process id="Process_GroupRatioRestore" isExecutable="true">
+        <bpmn:startEvent id="Event_group_ratio" name="外部发生器">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_initiatorType" value="external" />
+                    <camunda:property name="_entityType" value="order" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:outgoing>Flow_start_combine</bpmn:outgoing>
+        </bpmn:startEvent>
+        <bpmn:sequenceFlow id="Flow_start_combine" sourceRef="Event_group_ratio" targetRef="Activity_combine" />
+        <bpmn:task id="Activity_combine" name="分组合并">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_taskType" value="combine" />
+                    <camunda:property name="_method" value="groupRatio" />
+                    <camunda:property name="_ratio" value="2" />
+                    <camunda:property name="_distributionType" value="static" />
+                    <camunda:property name="_staticInterval" value="0" />
+                    <camunda:property name="_entityType" value="batch" />
+                    <camunda:property name="_useQuantityProperty" value="true" />
+                    <camunda:property name="_quantityProperty" value="qty" />
+                    <camunda:property name="_groupProperty" value="color" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:incoming>Flow_start_combine</bpmn:incoming>
+            <bpmn:outgoing>Flow_combine_restore</bpmn:outgoing>
+        </bpmn:task>
+        <bpmn:sequenceFlow id="Flow_combine_restore" sourceRef="Activity_combine" targetRef="Activity_restore" />
+        <bpmn:task id="Activity_restore" name="还原">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_taskType" value="split" />
+                    <camunda:property name="_method" value="restore" />
+                    <camunda:property name="_oneOff" value="true" />
+                    <camunda:property name="_distributionType" value="static" />
+                    <camunda:property name="_staticInterval" value="0" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:incoming>Flow_combine_restore</bpmn:incoming>
+            <bpmn:outgoing>Flow_restore_gateway</bpmn:outgoing>
+        </bpmn:task>
+        <bpmn:sequenceFlow id="Flow_restore_gateway" sourceRef="Activity_restore" targetRef="Gateway_color" />
+        <bpmn:exclusiveGateway id="Gateway_color" name="颜色分流">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_criteria" value="property" />
+                    <camunda:property name="_propertyName" value="color" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:incoming>Flow_restore_gateway</bpmn:incoming>
+            <bpmn:outgoing>Flow_red</bpmn:outgoing>
+            <bpmn:outgoing>Flow_blue</bpmn:outgoing>
+        </bpmn:exclusiveGateway>
+        <bpmn:task id="Task_red" name="红色分支">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_taskType" value="delay" />
+                    <camunda:property name="_distributionType" value="static" />
+                    <camunda:property name="_staticInterval" value="0" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:incoming>Flow_red</bpmn:incoming>
+            <bpmn:outgoing>Flow_red_end</bpmn:outgoing>
+        </bpmn:task>
+        <bpmn:sequenceFlow id="Flow_red" name="red" sourceRef="Gateway_color" targetRef="Task_red" />
+        <bpmn:task id="Task_blue" name="蓝色分支">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_taskType" value="delay" />
+                    <camunda:property name="_distributionType" value="static" />
+                    <camunda:property name="_staticInterval" value="0" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:incoming>Flow_blue</bpmn:incoming>
+            <bpmn:outgoing>Flow_blue_end</bpmn:outgoing>
+        </bpmn:task>
+        <bpmn:sequenceFlow id="Flow_blue" name="blue" sourceRef="Gateway_color" targetRef="Task_blue" />
+        <bpmn:endEvent id="Event_end" name="结束">
+            <bpmn:incoming>Flow_red_end</bpmn:incoming>
+            <bpmn:incoming>Flow_blue_end</bpmn:incoming>
+        </bpmn:endEvent>
+        <bpmn:sequenceFlow id="Flow_red_end" sourceRef="Task_red" targetRef="Event_end" />
+        <bpmn:sequenceFlow id="Flow_blue_end" sourceRef="Task_blue" targetRef="Event_end" />
+    </bpmn:process>
+</bpmn:definitions>

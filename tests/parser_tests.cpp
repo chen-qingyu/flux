@@ -160,6 +160,9 @@ TEST_CASE("Parser reads combine and split ratio task model", "[parser][combine-s
     REQUIRE(combine.task->combine->method == flux::CombineMethod::Ratio);
     REQUIRE(combine.task->combine->ratio == 4);
     REQUIRE(combine.task->combine->entity_type == "truck");
+    REQUIRE(!combine.task->combine->use_quantity_property);
+    REQUIRE(!combine.task->combine->quantity_property.has_value());
+    REQUIRE(!combine.task->combine->group_property.has_value());
 
     REQUIRE(split.task.has_value());
     REQUIRE(split.task->type == flux::TaskType::Split);
@@ -202,4 +205,36 @@ TEST_CASE("Parser reads split property task model", "[parser][split-property]")
     const auto& gateway = flux::node(model, "Gateway_route");
     REQUIRE(gateway.gateway_criteria == flux::GatewayCriteria::Property);
     REQUIRE(gateway.gateway_property_name == std::optional<std::string>{"route"});
+}
+
+TEST_CASE("Parser reads quantity-aware combine restore model", "[parser][combine][quantity]")
+{
+    const auto model = flux::Parser::parse(std::filesystem::path("data") / "tests" / "combine_quantity_restore.bpmn");
+
+    const auto& combine = flux::node(model, "Activity_combine");
+    REQUIRE(combine.task.has_value());
+    REQUIRE(combine.task->type == flux::TaskType::Combine);
+    REQUIRE(combine.task->combine.has_value());
+    REQUIRE(combine.task->combine->method == flux::CombineMethod::Ratio);
+    REQUIRE(combine.task->combine->ratio == 5.0);
+    REQUIRE(combine.task->combine->entity_type == "bundle");
+    REQUIRE(combine.task->combine->use_quantity_property);
+    REQUIRE(combine.task->combine->quantity_property == std::optional<std::string>{"qty"});
+    REQUIRE(!combine.task->combine->group_property.has_value());
+}
+
+TEST_CASE("Parser reads group-ratio combine model", "[parser][combine][group-ratio]")
+{
+    const auto model = flux::Parser::parse(std::filesystem::path("data") / "tests" / "group_ratio_restore.bpmn");
+
+    const auto& combine = flux::node(model, "Activity_combine");
+    REQUIRE(combine.task.has_value());
+    REQUIRE(combine.task->type == flux::TaskType::Combine);
+    REQUIRE(combine.task->combine.has_value());
+    REQUIRE(combine.task->combine->method == flux::CombineMethod::GroupRatio);
+    REQUIRE(combine.task->combine->ratio == 2.0);
+    REQUIRE(combine.task->combine->entity_type == "batch");
+    REQUIRE(combine.task->combine->use_quantity_property);
+    REQUIRE(combine.task->combine->quantity_property == std::optional<std::string>{"qty"});
+    REQUIRE(combine.task->combine->group_property == std::optional<std::string>{"color"});
 }

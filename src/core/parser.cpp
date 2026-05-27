@@ -446,17 +446,21 @@ private:
     {
         CombineSpec combine;
         combine.method = read_required_enum<CombineMethod>(properties, "_method", context);
-        if (combine.method == CombineMethod::Quantity)
-        {
-            throw std::runtime_error(context + " does not support combine method 'quantity' yet.");
-        }
-
         combine.ratio = read_required_positive_double(properties, "_ratio", context);
         if (combine.ratio < 1.0)
         {
             throw std::runtime_error(context + " property '_ratio' must be greater than or equal to 1 for combine tasks.");
         }
         combine.entity_type = read_required_text(properties, "_entityType", context);
+        combine.use_quantity_property = read_required_bool(properties, "_useQuantityProperty", context);
+        if (combine.use_quantity_property)
+        {
+            combine.quantity_property = read_required_text(properties, "_quantityProperty", context);
+        }
+        if (combine.method == CombineMethod::GroupRatio)
+        {
+            combine.group_property = read_required_text(properties, "_groupProperty", context);
+        }
         return combine;
     }
 

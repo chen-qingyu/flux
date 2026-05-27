@@ -57,6 +57,8 @@ struct RestorableTokenSnapshot
 {
     ProcessToken token;
     std::shared_ptr<CombineHistory> history;
+    std::size_t restore_count{1};
+    std::optional<std::string> quantity_property;
 };
 
 struct CombineHistory
@@ -66,13 +68,49 @@ struct CombineHistory
 
 struct CombineBatch
 {
-    std::vector<entt::entity> members;
+    struct Member
+    {
+        entt::entity token{entt::null};
+        std::size_t consumed_units{0};
+    };
+
+    std::vector<Member> members;
+};
+
+struct CombineGroupKey
+{
+    std::string task_id;
+    std::string group;
+
+    bool operator==(const CombineGroupKey&) const = default;
+};
+
+struct CombineGroupKeyHash
+{
+    std::size_t operator()(const CombineGroupKey& key) const
+    {
+        auto hash = std::hash<std::string>{}(key.task_id);
+        hash ^= std::hash<std::string>{}(key.group) + 0x9e3779b9U + (hash << 6U) + (hash >> 2U);
+        return hash;
+    }
 };
 
 struct RatioProgress
 {
     std::size_t processed_inputs{0};
     std::size_t emitted_outputs{0};
+};
+
+struct WaitingCombineToken
+{
+    entt::entity token{entt::null};
+    std::size_t remaining_units{0};
+};
+
+struct CombineTokenState
+{
+    std::size_t waiting_units{0};
+    std::size_t in_flight_units{0};
 };
 
 struct ResourceRuntime
@@ -485,7 +523,16 @@ public:
 
     [[nodiscard]] RestorableTokenSnapshot snapshot_token(const entt::registry& registry, entt::entity token_entity) const
     {
-        return RestorableTokenSnapshot{registry.get<ProcessToken>(token_entity), snapshot_combine_history(registry, token_entity)};
+        return snapshot_token(registry, token_entity, 1, std::nullopt);
+    }
+
+    [[nodiscard]] RestorableTokenSnapshot snapshot_token(
+        const entt::registry& registry,
+        entt::entity token_entity,
+        std::size_t restore_count,
+        const std::optional<std::string>& quantity_property) const
+    {
+        return RestorableTokenSnapshot{registry.get<ProcessToken>(token_entity), snapshot_combine_history(registry, token_entity), restore_count, quantity_property};
     }
 
     void restore_snapshot_history(entt::registry& registry, entt::entity token_entity, const std::shared_ptr<CombineHistory>& history)
@@ -569,22 +616,39 @@ public:
         }
     }
 
-    void enqueue_combine_member(const std::string& task_id, entt::entity token_entity)
+    void enqueue_combine_member(const std::string& task_id, const std::string& group, entt::entity token_entity, std::size_t equivalent_units)
     {
-        combine_waiting_[task_id].push_back(token_entity);
+        if (equivalent_units == 0)
+        {
+            return;
+        }
+
+        combine_waiting_[CombineGroupKey{task_id, group}].push_back(WaitingCombineToken{token_entity, equivalent_units});
+        auto& state = combine_token_state_[static_cast<std::uint32_t>(entt::to_integral(token_entity))];
+        state.waiting_units += equivalent_units;
     }
 
-    [[nodiscard]] std::vector<entt::entity> take_waiting_combine_members(const entt::registry& registry, const std::string& task_id)
+    [[nodiscard]] std::vector<CombineBatch::Member> take_waiting_combine_members(
+        const entt::registry& registry,
+        const std::string& task_id,
+        const std::string& group,
+        std::size_t required_units)
     {
-        auto found = combine_waiting_.find(task_id);
+        auto found = combine_waiting_.find(CombineGroupKey{task_id, group});
         if (found == combine_waiting_.end())
         {
             return {};
         }
 
         auto& waiting = found->second;
-        while (!waiting.empty() && !(registry.valid(waiting.front()) && registry.all_of<ProcessToken>(waiting.front())))
+        while (!waiting.empty() && !(registry.valid(waiting.front().token) && registry.all_of<ProcessToken>(waiting.front().token)))
         {
+            auto& state = combine_token_state_[static_cast<std::uint32_t>(entt::to_integral(waiting.front().token))];
+            state.waiting_units = state.waiting_units >= waiting.front().remaining_units ? state.waiting_units - waiting.front().remaining_units : 0;
+            if (state.waiting_units == 0 && state.in_flight_units == 0)
+            {
+                combine_token_state_.erase(static_cast<std::uint32_t>(entt::to_integral(waiting.front().token)));
+            }
             waiting.pop_front();
         }
         if (waiting.empty())
@@ -592,20 +656,63 @@ public:
             return {};
         }
 
-        std::vector<entt::entity> members;
-        members.reserve(waiting.size());
-        while (!waiting.empty())
+        std::vector<CombineBatch::Member> members;
+        while (required_units > 0 && !waiting.empty())
         {
-            members.push_back(waiting.front());
-            waiting.pop_front();
+            auto& front = waiting.front();
+            const auto consumed_units = std::min(required_units, front.remaining_units);
+            members.push_back(CombineBatch::Member{front.token, consumed_units});
+
+            auto& state = combine_token_state_[static_cast<std::uint32_t>(entt::to_integral(front.token))];
+            state.waiting_units -= consumed_units;
+            state.in_flight_units += consumed_units;
+
+            front.remaining_units -= consumed_units;
+            required_units -= consumed_units;
+            if (front.remaining_units == 0)
+            {
+                waiting.pop_front();
+            }
         }
-        combine_waiting_.erase(found);
+        if (required_units != 0)
+        {
+            throw std::runtime_error("Combine task reached an invalid waiting state.");
+        }
+        if (waiting.empty())
+        {
+            combine_waiting_.erase(found);
+        }
         return members;
+    }
+
+    void finish_combine_members(entt::registry& registry, const std::vector<CombineBatch::Member>& members)
+    {
+        for (const auto& member : members)
+        {
+            const auto key = static_cast<std::uint32_t>(entt::to_integral(member.token));
+            auto found = combine_token_state_.find(key);
+            if (found == combine_token_state_.end())
+            {
+                continue;
+            }
+
+            auto& state = found->second;
+            state.in_flight_units = state.in_flight_units >= member.consumed_units ? state.in_flight_units - member.consumed_units : 0;
+            if (state.waiting_units == 0 && state.in_flight_units == 0)
+            {
+                combine_token_state_.erase(found);
+                if (registry.valid(member.token))
+                {
+                    registry.destroy(member.token);
+                }
+            }
+        }
     }
 
 private:
     const ResourceManager& resources_;
-    std::unordered_map<std::string, std::deque<entt::entity>> combine_waiting_;
+    std::unordered_map<CombineGroupKey, std::deque<WaitingCombineToken>, CombineGroupKeyHash> combine_waiting_;
+    std::unordered_map<std::uint32_t, CombineTokenState> combine_token_state_;
 };
 
 class Engine::PendingManager
@@ -874,9 +981,13 @@ private:
     }
 
     [[nodiscard]] std::string select_exclusive_gateway_target(const NodeDefinition& node, entt::entity token_entity);
-    [[nodiscard]] entt::entity create_restored_token(const RestorableTokenSnapshot& snapshot);
-    [[nodiscard]] std::size_t advance_combine_outputs(const std::string& task_id, double ratio);
+    [[nodiscard]] std::vector<entt::entity> create_restored_tokens(const RestorableTokenSnapshot& snapshot, const std::string& restore_node_id);
+    [[nodiscard]] std::size_t advance_combine_outputs(const std::string& task_id, const std::string& group, std::size_t equivalent_units, double ratio);
     [[nodiscard]] std::size_t advance_split_outputs(const std::string& task_id, double ratio);
+    [[nodiscard]] std::size_t read_positive_integer_property(const ProcessToken& token_component, const std::string& property_name, const std::string& context) const;
+    [[nodiscard]] std::size_t combine_equivalent_units(const NodeDefinition& node, entt::entity token_entity) const;
+    [[nodiscard]] std::string combine_group_value(const NodeDefinition& node, entt::entity token_entity) const;
+    [[nodiscard]] std::size_t combine_output_units(double ratio, std::size_t output_index) const;
     void start_or_enqueue_task(entt::entity token_entity, const NodeDefinition& node, double time);
     void schedule_split_outputs(entt::entity token_entity, const NodeDefinition& node, double start_time, double duration);
 
@@ -891,7 +1002,7 @@ private:
     double current_time_{0.0};
     std::uint64_t next_order_{0};
     std::unordered_map<std::string, std::size_t> entity_type_sequences_;
-    std::unordered_map<std::string, RatioProgress> combine_ratio_progress_;
+    std::unordered_map<CombineGroupKey, RatioProgress, CombineGroupKeyHash> combine_ratio_progress_;
     std::unordered_map<std::string, RatioProgress> split_ratio_progress_;
 };
 
@@ -1040,21 +1151,39 @@ PendingTaskRequest Engine::PendingManager::take_front_request(const PendingQueue
     return request;
 }
 
-entt::entity Engine::RunState::create_restored_token(const RestorableTokenSnapshot& snapshot)
+std::vector<entt::entity> Engine::RunState::create_restored_tokens(const RestorableTokenSnapshot& snapshot, const std::string& restore_node_id)
 {
-    const auto restored = create_token(
-        snapshot.token.entity_id,
-        snapshot.token.entity_type,
-        snapshot.token.token_id,
-        snapshot.token.created_at);
-    tokens_.restore_snapshot_history(registry_, restored, snapshot.history);
-    return restored;
+    std::vector<entt::entity> restored_tokens;
+    restored_tokens.reserve(snapshot.restore_count);
+
+    const auto create_with_properties = [&](std::unordered_map<std::string, std::string> properties, const std::string& entity_id, const std::string& token_id)
+    {
+        const auto restored = create_token(entity_id, snapshot.token.entity_type, token_id, snapshot.token.created_at, std::move(properties));
+        tokens_.restore_snapshot_history(registry_, restored, snapshot.history);
+        restored_tokens.push_back(restored);
+    };
+
+    if (!snapshot.quantity_property.has_value())
+    {
+        create_with_properties(snapshot.token.properties, snapshot.token.entity_id, snapshot.token.token_id);
+        return restored_tokens;
+    }
+
+    for (std::size_t index = 0; index < snapshot.restore_count; ++index)
+    {
+        auto properties = snapshot.token.properties;
+        properties[*snapshot.quantity_property] = "1";
+        const auto entity_id = next_entity_id(restore_node_id, snapshot.token.entity_type);
+        create_with_properties(std::move(properties), entity_id, entity_id + ".t0");
+    }
+
+    return restored_tokens;
 }
 
-std::size_t Engine::RunState::advance_combine_outputs(const std::string& task_id, double ratio)
+std::size_t Engine::RunState::advance_combine_outputs(const std::string& task_id, const std::string& group, std::size_t equivalent_units, double ratio)
 {
-    auto& progress = combine_ratio_progress_[task_id];
-    ++progress.processed_inputs;
+    auto& progress = combine_ratio_progress_[CombineGroupKey{task_id, group}];
+    progress.processed_inputs += equivalent_units;
 
     const auto target_outputs = static_cast<std::size_t>(std::floor((static_cast<long double>(progress.processed_inputs) / static_cast<long double>(ratio)) + 1e-12L));
     if (target_outputs <= progress.emitted_outputs)
@@ -1081,6 +1210,71 @@ std::size_t Engine::RunState::advance_split_outputs(const std::string& task_id, 
     const auto delta = target_outputs - progress.emitted_outputs;
     progress.emitted_outputs = target_outputs;
     return delta;
+}
+
+std::size_t Engine::RunState::read_positive_integer_property(const ProcessToken& token_component, const std::string& property_name, const std::string& context) const
+{
+    const auto found = token_component.properties.find(property_name);
+    if (found == token_component.properties.end() || found->second.empty())
+    {
+        throw std::runtime_error(context + " requires token property '" + property_name + "' to be a positive integer.");
+    }
+
+    std::size_t parsed_length = 0;
+    unsigned long long parsed_count = 0;
+    try
+    {
+        parsed_count = std::stoull(found->second, &parsed_length);
+    }
+    catch (const std::exception&)
+    {
+        throw std::runtime_error(context + " requires token property '" + property_name + "' to be a positive integer.");
+    }
+
+    if (parsed_length != found->second.size() || parsed_count == 0 || parsed_count > std::numeric_limits<std::size_t>::max())
+    {
+        throw std::runtime_error(context + " requires token property '" + property_name + "' to be a positive integer.");
+    }
+
+    return static_cast<std::size_t>(parsed_count);
+}
+
+std::size_t Engine::RunState::combine_equivalent_units(const NodeDefinition& node, entt::entity token_entity) const
+{
+    const auto& combine = *node.task->combine;
+    if (!combine.use_quantity_property)
+    {
+        return 1;
+    }
+
+    return read_positive_integer_property(token(token_entity), *combine.quantity_property, "Task '" + node.id + "'");
+}
+
+std::string Engine::RunState::combine_group_value(const NodeDefinition& node, entt::entity token_entity) const
+{
+    const auto& combine = *node.task->combine;
+    if (combine.method != CombineMethod::GroupRatio)
+    {
+        return {};
+    }
+
+    const auto& token_component = token(token_entity);
+    const auto found = token_component.properties.find(*combine.group_property);
+    if (found == token_component.properties.end() || found->second.empty())
+    {
+        throw std::runtime_error("Task '" + node.id + "' requires token property '" + *combine.group_property + "' for property-based combine grouping.");
+    }
+
+    return found->second;
+}
+
+std::size_t Engine::RunState::combine_output_units(double ratio, std::size_t output_index) const
+{
+    const auto upper = static_cast<std::size_t>(std::ceil((static_cast<long double>(output_index) * static_cast<long double>(ratio)) - 1e-12L));
+    const auto lower = output_index == 1
+                           ? 0U
+                           : static_cast<std::size_t>(std::ceil((static_cast<long double>(output_index - 1) * static_cast<long double>(ratio)) - 1e-12L));
+    return upper - lower;
 }
 
 void Engine::RunState::start_or_enqueue_task(entt::entity token_entity, const NodeDefinition& node, double time)
@@ -1130,31 +1324,7 @@ void Engine::RunState::schedule_split_outputs(entt::entity token_entity, const N
     {
         const auto& parent = token(token_entity);
         const auto& property_name = node.task->split->property_name.value();
-        const auto found = parent.properties.find(property_name);
-        const auto invalid_count = "Task '" + node.id + "' requires token property '" + property_name + "' to be a positive integer.";
-
-        if (found == parent.properties.end() || found->second.empty())
-        {
-            throw std::runtime_error(invalid_count);
-        }
-
-        std::size_t parsed_length = 0;
-        unsigned long long parsed_count = 0;
-        try
-        {
-            parsed_count = std::stoull(found->second, &parsed_length);
-        }
-        catch (const std::exception&)
-        {
-            throw std::runtime_error(invalid_count);
-        }
-
-        if (parsed_length != found->second.size() || parsed_count == 0 || parsed_count > std::numeric_limits<std::size_t>::max())
-        {
-            throw std::runtime_error(invalid_count);
-        }
-
-        const auto output_count = static_cast<std::size_t>(parsed_count);
+        const auto output_count = read_positive_integer_property(parent, property_name, "Task '" + node.id + "'");
         outputs.reserve(output_count);
         for (std::size_t index = 0; index < output_count; ++index)
         {
@@ -1174,7 +1344,8 @@ void Engine::RunState::schedule_split_outputs(entt::entity token_entity, const N
         outputs.reserve(history.members.size());
         for (const auto& snapshot : history.members)
         {
-            outputs.push_back(create_restored_token(snapshot));
+            auto restored = create_restored_tokens(snapshot, node.id);
+            outputs.insert(outputs.end(), restored.begin(), restored.end());
         }
     }
 
@@ -1280,32 +1451,50 @@ void Engine::RunState::handle_arrive_node(const ScheduledEvent& event)
 
         if (node.task->type == TaskType::Combine)
         {
-            tokens_.enqueue_combine_member(node.id, event.token);
-            const auto output_count = advance_combine_outputs(node.id, node.task->combine->ratio);
+            const auto group = combine_group_value(node, event.token);
+            const auto equivalent_units = combine_equivalent_units(node, event.token);
+            tokens_.enqueue_combine_member(node.id, group, event.token, equivalent_units);
+
+            const auto& combine = *node.task->combine;
+            const auto output_count = advance_combine_outputs(node.id, group, equivalent_units, combine.ratio);
             if (output_count == 0)
             {
                 return;
             }
 
-            const auto members = tokens_.take_waiting_combine_members(registry_, node.id);
-            if (output_count != 1 || members.empty())
+            auto& progress = combine_ratio_progress_[CombineGroupKey{node.id, group}];
+            const auto first_output_index = progress.emitted_outputs - output_count + 1;
+            for (std::size_t output_offset = 0; output_offset < output_count; ++output_offset)
             {
-                throw std::runtime_error("Task '" + node.id + "' reached an invalid combine state.");
+                const auto output_index = first_output_index + output_offset;
+                const auto required_units = combine_output_units(combine.ratio, output_index);
+                const auto members = tokens_.take_waiting_combine_members(registry_, node.id, group, required_units);
+                if (members.empty())
+                {
+                    throw std::runtime_error("Task '" + node.id + "' reached an invalid combine state.");
+                }
+
+                std::vector<RestorableTokenSnapshot> snapshots;
+                snapshots.reserve(members.size());
+                for (const auto& member : members)
+                {
+                    if (combine.use_quantity_property)
+                    {
+                        snapshots.push_back(tokens_.snapshot_token(registry_, member.token, member.consumed_units, combine.quantity_property));
+                    }
+                    else
+                    {
+                        snapshots.push_back(tokens_.snapshot_token(registry_, member.token));
+                    }
+                }
+
+                const auto entity_id = next_entity_id(node.id, combine.entity_type);
+                const auto batch_token = create_token(entity_id, combine.entity_type, entity_id + ".t0", event.time);
+                registry_.emplace<CombineBatch>(batch_token, CombineBatch{members});
+                tokens_.set_combine_history(registry_, batch_token, std::move(snapshots));
+
+                start_or_enqueue_task(batch_token, node, event.time);
             }
-
-            std::vector<RestorableTokenSnapshot> snapshots;
-            snapshots.reserve(members.size());
-            for (const auto member : members)
-            {
-                snapshots.push_back(tokens_.snapshot_token(registry_, member));
-            }
-
-            const auto entity_id = next_entity_id(node.id, node.task->combine->entity_type);
-            const auto batch_token = create_token(entity_id, node.task->combine->entity_type, entity_id + ".t0", event.time);
-            registry_.emplace<CombineBatch>(batch_token, CombineBatch{members});
-            tokens_.set_combine_history(registry_, batch_token, std::move(snapshots));
-
-            start_or_enqueue_task(batch_token, node, event.time);
             return;
         }
 
@@ -1363,10 +1552,7 @@ void Engine::RunState::handle_finish_task(const ScheduledEvent& event)
         if (registry_.all_of<CombineBatch>(event.token))
         {
             const auto members = registry_.get<CombineBatch>(event.token).members;
-            for (const auto member : members)
-            {
-                destroy_token(member);
-            }
+            tokens_.finish_combine_members(registry_, members);
             registry_.remove<CombineBatch>(event.token);
         }
     }

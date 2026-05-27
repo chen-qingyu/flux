@@ -1298,15 +1298,10 @@ void Engine::RunState::handle_arrive_node(const ScheduledEvent& event)
                 return;
             }
 
-            if (output_count != 1)
-            {
-                throw std::runtime_error("Task '" + node.id + "' produced an invalid combine ratio transition.");
-            }
-
             const auto members = tokens_.take_waiting_combine_members(registry_, node.id);
-            if (members.empty())
+            if (output_count != 1 || members.empty())
             {
-                throw std::runtime_error("Task '" + node.id + "' is missing combine members for a ready ratio batch.");
+                throw std::runtime_error("Task '" + node.id + "' reached an invalid combine state.");
             }
 
             std::vector<RestorableTokenSnapshot> snapshots;
@@ -1442,9 +1437,7 @@ std::string Engine::RunState::select_exclusive_gateway_target(const NodeDefiniti
             }
         }
 
-        throw std::runtime_error(
-            "Entity '" + token_component.entity_id + "' property '" + *node.gateway_property_name + "' value '" + property->second +
-            "' does not match any outgoing branch of exclusive gateway '" + node.id + "'.");
+        throw std::runtime_error("Entity '" + token_component.entity_id + "' does not match any outgoing flow for exclusive gateway '" + node.id + "'.");
     }
 
     if (*node.gateway_criteria != GatewayCriteria::Weight)

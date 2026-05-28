@@ -175,11 +175,11 @@ TEST_CASE("Parser reads combine and split ratio task model", "[parser][combine-s
     REQUIRE(split.task->split->one_off == false);
 }
 
-TEST_CASE("Parser reads split property task model", "[parser][split-property]")
+TEST_CASE("Parser reads split quantity task model", "[parser][split-quantity]")
 {
-    const auto model = flux::Parser::parse(std::filesystem::path("data") / "tests" / "split_property.bpmn");
+    const auto model = flux::Parser::parse(std::filesystem::path("data") / "tests" / "split_quantity.bpmn");
 
-    const auto& start = flux::node(model, "Event_split_property");
+    const auto& start = flux::node(model, "Event_split_quantity");
     REQUIRE(start.generator.has_value());
     REQUIRE(start.generator->type == flux::InitiatorType::External);
     REQUIRE(start.generator->external_records.size() == 3);
@@ -193,12 +193,12 @@ TEST_CASE("Parser reads split property task model", "[parser][split-property]")
     REQUIRE(start.generator->external_records[2].properties.at("qty") == "3");
     REQUIRE(start.generator->external_records[2].properties.at("route") == "get");
 
-    const auto& split = flux::node(model, "Activity_split_property");
+    const auto& split = flux::node(model, "Activity_split_quantity");
     REQUIRE(split.task.has_value());
     REQUIRE(split.task->type == flux::TaskType::Split);
     REQUIRE(split.task->split.has_value());
-    REQUIRE(split.task->split->method == flux::SplitMethod::Property);
-    REQUIRE(split.task->split->property_name == std::optional<std::string>{"qty"});
+    REQUIRE(split.task->split->method == flux::SplitMethod::Quantity);
+    REQUIRE(split.task->split->quantity_property == std::optional<std::string>{"qty"});
     REQUIRE(split.task->split->entity_type.empty());
     REQUIRE(split.task->split->one_off == true);
 

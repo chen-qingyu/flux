@@ -1320,11 +1320,11 @@ void Engine::RunState::schedule_split_outputs(entt::entity token_entity, const N
             outputs.push_back(child);
         }
     }
-    else if (node.task->split->method == SplitMethod::Property)
+    else if (node.task->split->method == SplitMethod::Quantity)
     {
         const auto& parent = token(token_entity);
-        const auto& property_name = node.task->split->property_name.value();
-        const auto output_count = read_positive_integer_property(parent, property_name, "Task '" + node.id + "'");
+        const auto& quantity_property = node.task->split->quantity_property.value();
+        const auto output_count = read_positive_integer_property(parent, quantity_property, "Task '" + node.id + "'");
         outputs.reserve(output_count);
         for (std::size_t index = 0; index < output_count; ++index)
         {

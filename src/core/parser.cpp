@@ -478,8 +478,8 @@ private:
                 return split;
             case SplitMethod::Restore:
                 return split;
-            case SplitMethod::Property:
-                split.property_name = read_required_text(properties, "_propertyName", context);
+            case SplitMethod::Quantity:
+                split.quantity_property = read_required_text(properties, "_quantityProperty", context);
                 return split;
         }
 

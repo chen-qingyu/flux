@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <bpmn:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
-    xmlns:camunda="http://camunda.org/schema/1.0/bpmn" id="Definitions_SplitProperty" targetNamespace="http://bpmn.io/schema/bpmn">
-    <bpmn:process id="Process_split_property" isExecutable="true">
-        <bpmn:startEvent id="Event_split_property" name="外部发生器">
+    xmlns:camunda="http://camunda.org/schema/1.0/bpmn" id="Definitions_SplitQuantity" targetNamespace="http://bpmn.io/schema/bpmn">
+    <bpmn:process id="Process_split_quantity" isExecutable="true">
+        <bpmn:startEvent id="Event_split_quantity" name="外部发生器">
             <bpmn:extensionElements>
                 <camunda:properties>
                     <camunda:property name="_initiatorType" value="external" />
@@ -12,22 +12,22 @@
             </bpmn:extensionElements>
             <bpmn:outgoing>Flow_start_split</bpmn:outgoing>
         </bpmn:startEvent>
-        <bpmn:sequenceFlow id="Flow_start_split" sourceRef="Event_split_property" targetRef="Activity_split_property" />
-        <bpmn:task id="Activity_split_property" name="按属性拆分">
+        <bpmn:sequenceFlow id="Flow_start_split" sourceRef="Event_split_quantity" targetRef="Activity_split_quantity" />
+        <bpmn:task id="Activity_split_quantity" name="按数量拆分">
             <bpmn:extensionElements>
                 <camunda:properties>
                     <camunda:property name="_taskType" value="split" />
-                    <camunda:property name="_method" value="property" />
+                    <camunda:property name="_method" value="quantity" />
                     <camunda:property name="_oneOff" value="true" />
                     <camunda:property name="_distributionType" value="static" />
                     <camunda:property name="_staticInterval" value="1" />
-                    <camunda:property name="_propertyName" value="qty" />
+                    <camunda:property name="_quantityProperty" value="qty" />
                 </camunda:properties>
             </bpmn:extensionElements>
             <bpmn:incoming>Flow_start_split</bpmn:incoming>
             <bpmn:outgoing>Flow_split_gateway</bpmn:outgoing>
         </bpmn:task>
-        <bpmn:sequenceFlow id="Flow_split_gateway" sourceRef="Activity_split_property" targetRef="Gateway_route" />
+        <bpmn:sequenceFlow id="Flow_split_gateway" sourceRef="Activity_split_quantity" targetRef="Gateway_route" />
         <bpmn:exclusiveGateway id="Gateway_route" name="属性路由">
             <bpmn:extensionElements>
                 <camunda:properties>

@@ -208,7 +208,7 @@ python run.py data/demo.bpmn --seed 42
 
 - `_method=ratio`：还需要 `_ratio` 和新的 `_entityType`，表示 `1 -> M` 拆分。处理到第 `n` 个输入实体时，累计产出数为 `floor(n * _ratio)`，每次只补齐新增的输出，因此 `_ratio` 支持正整数和正浮点数
 - `_method=restore`：要求输入实体之前由 `combine` 生成；会按最近一次未还原的合并记录恢复原始实体ID、类型和数量。支持嵌套。
-- `_method=property`：还需要 `_propertyName`，表示按实体属性里的正整数数量拆分。该属性来自 `_initiatorType=external` 的 CSV 自定义列名。拆分后子实体类型保持不变，并继承原实体属性；如果属性缺失、不是正整数，或值小于等于 `0`，会直接报错
+- `_method=quantity`：还需要 `_quantityProperty`，表示按实体属性里的正整数数量拆分。该属性来自 `_initiatorType=external` 的 CSV 自定义列名。拆分后子实体类型保持不变，并继承原实体属性；如果属性缺失、不是正整数，或值小于等于 `0`，会直接报错
 
 ### 网关
 

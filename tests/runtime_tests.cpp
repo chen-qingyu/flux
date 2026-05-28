@@ -104,9 +104,9 @@ TEST_CASE("Property splitter routes entities by external csv property", "[runtim
     REQUIRE(task_starts[3].entity_id == "Event_property_case_3");
 }
 
-TEST_CASE("Split property duplicates entities by external csv count and keeps properties", "[runtime][split-property]")
+TEST_CASE("Split quantity duplicates entities by external csv count and keeps properties", "[runtime][split-quantity]")
 {
-    const auto result = flux::test_support::run_model(std::filesystem::path("data") / "tests" / "split_property.bpmn");
+    const auto result = flux::test_support::run_model(std::filesystem::path("data") / "tests" / "split_quantity.bpmn");
 
     const auto task_starts = flux::test_support::select_events(result, "task_start");
     const auto exits = flux::test_support::select_events(result, "entity_exit");
@@ -116,7 +116,7 @@ TEST_CASE("Split property duplicates entities by external csv count and keeps pr
                              { return row.node_id == node_id; });
     };
 
-    REQUIRE(count_task_starts(task_starts, "Activity_split_property") == 3);
+    REQUIRE(count_task_starts(task_starts, "Activity_split_quantity") == 3);
     REQUIRE(count_task_starts(task_starts, "Task_get") == 3);
     REQUIRE(count_task_starts(task_starts, "Task_put") == 3);
 

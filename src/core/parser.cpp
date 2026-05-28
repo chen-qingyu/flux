@@ -4,6 +4,7 @@
 #include <cctype>
 #include <cmath>
 #include <filesystem>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
@@ -58,14 +59,22 @@ private:
         return name;
     }
 
-    [[nodiscard]] std::string read_required_attribute(const pugi::xml_node& node, const char* attribute_name, const char* context) const
+    [[nodiscard]] std::string require_text(const char* value, const std::string& name, const std::string& context) const
     {
-        const auto attribute = node.attribute(attribute_name);
-        if (!attribute)
+        if (value != nullptr && *value != '\0')
         {
-            throw std::runtime_error(std::string(context) + " is missing required attribute '" + attribute_name + "'.");
+            return value;
         }
-        return attribute.value();
+        throw std::runtime_error(context + " is missing required value '" + name + "'.");
+    }
+
+    [[nodiscard]] std::string require_text(const PropertyMap& properties, const std::string& key, const std::string& context) const
+    {
+        if (const auto found = properties.find(key); found != properties.end())
+        {
+            return require_text(found->second.c_str(), key, context);
+        }
+        throw std::runtime_error(context + " is missing required value '" + key + "'.");
     }
 
     [[nodiscard]] PropertyMap read_properties(const pugi::xml_node& owner) const
@@ -145,62 +154,38 @@ private:
         return records;
     }
 
-    [[nodiscard]] double read_required_double(const PropertyMap& properties, const std::string& key, const std::string& context) const
+    [[nodiscard]] double parse_double(const std::string& value, const std::string& name, const std::string& context) const
     {
-        if (const auto found = properties.find(key); found != properties.end())
+        std::size_t parsed_size = 0;
+        double parsed = 0.0;
+        try
         {
-            std::size_t parsed_size = 0;
-            const auto parsed = std::stod(found->second, &parsed_size);
-            if (parsed_size != found->second.size() || !std::isfinite(parsed))
-            {
-                throw std::runtime_error(context + " property '" + key + "' must be a finite number.");
-            }
-            return parsed;
+            parsed = std::stod(value, &parsed_size);
         }
-        throw std::runtime_error(context + " is missing required numeric property '" + key + "'.");
-    }
-
-    [[nodiscard]] std::string read_required_text(const PropertyMap& properties, const std::string& key, const std::string& context) const
-    {
-        if (const auto found = properties.find(key); found != properties.end() && !found->second.empty())
+        catch (const std::exception&)
         {
-            return found->second;
+            throw std::runtime_error(context + " value '" + name + "' must be a finite number.");
         }
-        throw std::runtime_error(context + " is missing required property '" + key + "'.");
+        if (parsed_size != value.size() || !std::isfinite(parsed))
+        {
+            throw std::runtime_error(context + " value '" + name + "' must be a finite number.");
+        }
+        return parsed;
     }
 
     template <typename Enum>
-    [[nodiscard]] Enum read_required_enum(const PropertyMap& properties, const std::string& key, const std::string& context) const
+    [[nodiscard]] Enum parse_enum(const std::string& value, const std::string& name, const std::string& context) const
     {
-        const auto value = read_required_text(properties, key, context);
         if (const auto parsed = magic_enum::enum_cast<Enum>(value, magic_enum::case_insensitive); parsed.has_value())
         {
             return *parsed;
         }
 
-        throw std::runtime_error(context + " uses unsupported property '" + key + "' value '" + value + "'.");
+        throw std::runtime_error(context + " value '" + name + "' is unsupported.");
     }
 
-    template <typename Enum>
-    [[nodiscard]] std::optional<Enum> read_optional_enum(const PropertyMap& properties, const std::string& key, const std::string& context) const
+    [[nodiscard]] bool parse_bool(const std::string& value, const std::string& name, const std::string& context) const
     {
-        const auto found = properties.find(key);
-        if (found == properties.end() || found->second.empty())
-        {
-            return std::nullopt;
-        }
-
-        if (const auto parsed = magic_enum::enum_cast<Enum>(found->second, magic_enum::case_insensitive); parsed.has_value())
-        {
-            return *parsed;
-        }
-
-        throw std::runtime_error(context + " uses unsupported property '" + key + "' value '" + found->second + "'.");
-    }
-
-    [[nodiscard]] bool read_required_bool(const PropertyMap& properties, const std::string& key, const std::string& context) const
-    {
-        const auto value = read_required_text(properties, key, context);
         if (value == "true")
         {
             return true;
@@ -210,104 +195,107 @@ private:
             return false;
         }
 
-        throw std::runtime_error(context + " uses unsupported property '" + key + "' value '" + value + "'.");
+        throw std::runtime_error(context + " value '" + name + "' must be 'true' or 'false'.");
     }
 
-    [[nodiscard]] std::size_t read_required_count(const PropertyMap& properties, const std::string& key, const std::string& context) const
+    [[nodiscard]] std::size_t parse_count(const std::string& value, const std::string& name, const std::string& context, std::optional<std::size_t> maximum = std::nullopt) const
     {
-        if (const auto found = properties.find(key); found != properties.end())
+        std::size_t parsed_size = 0;
+        long long parsed = 0;
+        try
         {
-            const auto parsed = std::stoll(found->second);
-            if (parsed <= 0)
-            {
-                throw std::runtime_error(context + " property '" + key + "' must be greater than zero.");
-            }
-            return static_cast<std::size_t>(parsed);
+            parsed = std::stoll(value, &parsed_size);
         }
-        throw std::runtime_error(context + " is missing required property '" + key + "'.");
-    }
-
-    [[nodiscard]] double read_required_positive_double(const PropertyMap& properties, const std::string& key, const std::string& context) const
-    {
-        const auto parsed = read_required_double(properties, key, context);
-        if (!std::isfinite(parsed) || parsed <= 0.0)
+        catch (const std::exception&)
         {
-            throw std::runtime_error(context + " property '" + key + "' must be a finite value greater than zero.");
+            throw std::runtime_error(context + " value '" + name + "' must be greater than zero.");
         }
-        return parsed;
+        if (parsed_size != value.size() || parsed <= 0)
+        {
+            throw std::runtime_error(context + " value '" + name + "' must be greater than zero.");
+        }
+        const auto count = static_cast<std::size_t>(parsed);
+        if (maximum.has_value() && count > *maximum)
+        {
+            throw std::runtime_error(context + " value '" + name + "' exceeds supported maximum.");
+        }
+        return count;
     }
 
     [[nodiscard]] DistributionSpec read_distribution(const PropertyMap& properties, const std::string& type_key, const std::string& context) const
     {
-        const auto distribution_type = read_required_enum<DistributionType>(properties, type_key, context);
+        const auto require_number = [&](const std::string& key)
+        {
+            return parse_double(require_text(properties, key, context), key, context);
+        };
+        const auto distribution_type = parse_enum<DistributionType>(require_text(properties, type_key, context), type_key, context);
+        DistributionSpec distribution;
+        distribution.type = distribution_type;
         switch (distribution_type)
         {
             case DistributionType::Static:
-                return DistributionSpec{DistributionType::Static, read_required_double(properties, "_staticInterval", context), 0.0};
+                distribution.first = require_number("_staticInterval");
+                distribution.second = 0.0;
+                break;
             case DistributionType::Uniform:
-                return DistributionSpec{
-                    DistributionType::Uniform,
-                    read_required_double(properties, "_min", context),
-                    read_required_double(properties, "_max", context),
-                };
+                distribution.first = require_number("_min");
+                distribution.second = require_number("_max");
+                break;
             case DistributionType::Exponential:
-                return DistributionSpec{
-                    DistributionType::Exponential,
-                    read_required_double(properties, "_mean", context),
-                    0.0,
-                };
+                distribution.first = require_number("_mean");
+                distribution.second = 0.0;
+                break;
             case DistributionType::Normal:
-                return DistributionSpec{
-                    DistributionType::Normal,
-                    read_required_double(properties, "_mean", context),
-                    read_required_double(properties, "_standardDeviation", context),
-                };
+                distribution.first = require_number("_mean");
+                distribution.second = require_number("_standardDeviation");
+                break;
             case DistributionType::LogNormal:
-                return DistributionSpec{
-                    DistributionType::LogNormal,
-                    read_required_double(properties, "_mean", context),
-                    read_required_double(properties, "_standardDeviation", context),
-                };
+                distribution.first = require_number("_mean");
+                distribution.second = require_number("_standardDeviation");
+                break;
         }
-
-        throw std::runtime_error(context + " uses unsupported distribution type.");
-    }
-
-    [[nodiscard]] std::optional<GatewayCriteria> read_optional_gateway_criteria(const PropertyMap& properties, const std::string& context) const
-    {
-        const auto found = properties.find("_criteria");
-        if (found == properties.end() || found->second.empty())
+        switch (distribution.type)
         {
-            return std::nullopt;
+            case DistributionType::Static:
+                if (distribution.first < 0.0)
+                {
+                    throw std::runtime_error(context + " value '_staticInterval' must be non-negative.");
+                }
+                break;
+            case DistributionType::Uniform:
+                if (distribution.first < 0.0)
+                {
+                    throw std::runtime_error(context + " value '_min' must be non-negative.");
+                }
+                if (distribution.second < 0.0)
+                {
+                    throw std::runtime_error(context + " value '_max' must be non-negative.");
+                }
+                if (distribution.first > distribution.second)
+                {
+                    throw std::runtime_error(context + " value '_min' must be less than or equal to '_max'.");
+                }
+                break;
+            case DistributionType::Exponential:
+                if (distribution.first <= 0.0)
+                {
+                    throw std::runtime_error(context + " value '_mean' must be greater than zero.");
+                }
+                break;
+            case DistributionType::Normal:
+                if (distribution.first < 0.0)
+                {
+                    throw std::runtime_error(context + " value '_mean' must be non-negative.");
+                }
+                [[fallthrough]];
+            case DistributionType::LogNormal:
+                if (distribution.second <= 0.0)
+                {
+                    throw std::runtime_error(context + " value '_standardDeviation' must be greater than zero.");
+                }
+                break;
         }
-
-        if (found->second == "weight")
-        {
-            return GatewayCriteria::Weight;
-        }
-
-        if (found->second == "property")
-        {
-            return GatewayCriteria::Property;
-        }
-
-        throw std::runtime_error(context + " uses unsupported property '_criteria' value '" + found->second + "'.");
-    }
-
-    [[nodiscard]] double parse_required_positive_double(const std::string& value, const std::string& context) const
-    {
-        if (value.empty())
-        {
-            throw std::runtime_error(context + " must define a positive numeric weight in sequence flow name.");
-        }
-
-        std::size_t parsed_size = 0;
-        const auto parsed = std::stod(value, &parsed_size);
-        if (parsed_size != value.size() || !std::isfinite(parsed) || parsed <= 0.0)
-        {
-            throw std::runtime_error(context + " must define a positive numeric weight in sequence flow name.");
-        }
-        return parsed;
+        return distribution;
     }
 
     [[nodiscard]] SequenceFlowDefinition& flow_by_id(const std::string& flow_id)
@@ -337,149 +325,82 @@ private:
         return 0;
     }
 
-    void validate_distribution(const DistributionSpec& distribution, const std::string& context) const
-    {
-        switch (distribution.type)
-        {
-            case DistributionType::Static:
-                if (distribution.first < 0.0)
-                {
-                    throw std::runtime_error(context + " property '_staticInterval' must be non-negative.");
-                }
-                break;
-            case DistributionType::Uniform:
-                if (distribution.first < 0.0)
-                {
-                    throw std::runtime_error(context + " property '_min' must be non-negative.");
-                }
-                if (distribution.second < 0.0)
-                {
-                    throw std::runtime_error(context + " property '_max' must be non-negative.");
-                }
-                if (distribution.first > distribution.second)
-                {
-                    throw std::runtime_error(context + " property '_min' must be less than or equal to '_max'.");
-                }
-                break;
-            case DistributionType::Exponential:
-                if (distribution.first <= 0.0)
-                {
-                    throw std::runtime_error(context + " property '_mean' must be greater than zero.");
-                }
-                break;
-            case DistributionType::Normal:
-                if (distribution.first < 0.0)
-                {
-                    throw std::runtime_error(context + " property '_mean' must be non-negative.");
-                }
-                [[fallthrough]];
-            case DistributionType::LogNormal:
-                if (distribution.second <= 0.0)
-                {
-                    throw std::runtime_error(context + " property '_standardDeviation' must be greater than zero.");
-                }
-                break;
-        }
-    }
-
     [[nodiscard]] GeneratorSpec read_generator_spec(const pugi::xml_node& node) const
     {
         const auto properties = read_properties(node);
-        const auto start_id = read_required_attribute(node, "id", "Start event");
+        const auto start_id = require_text(node.attribute("id").value(), "id", "Start event");
         const auto context = "Start event '" + start_id + "'";
 
-        const auto initiator_type = read_required_text(properties, "_initiatorType", context);
         GeneratorSpec generator;
-        generator.entity_type = read_required_text(properties, "_entityType", context);
+        generator.entity_type = require_text(properties, "_entityType", context);
 
-        if (initiator_type == "random")
+        switch (parse_enum<InitiatorType>(require_text(properties, "_initiatorType", context), "_initiatorType", context))
         {
-            generator.type = InitiatorType::Random;
-            generator.interval_distribution = read_distribution(properties, "_distributionType", context);
-            generator.entity_count = read_required_count(properties, "_entityCount", context);
-            return generator;
+            case InitiatorType::Random:
+                generator.type = InitiatorType::Random;
+                generator.interval_distribution = read_distribution(properties, "_distributionType", context);
+                generator.entity_count = parse_count(require_text(properties, "_entityCount", context), "_entityCount", context);
+                return generator;
+            case InitiatorType::External:
+                generator.type = InitiatorType::External;
+                generator.external_records = read_external_records(start_id);
+                return generator;
         }
-
-        if (initiator_type == "external")
-        {
-            generator.type = InitiatorType::External;
-            generator.external_records = read_external_records(start_id);
-            return generator;
-        }
-
-        throw std::runtime_error(context + " uses unsupported _initiatorType '" + initiator_type + "'. Only 'random' and 'external' are supported.");
         return generator;
-    }
-
-    [[nodiscard]] TaskType read_task_type(const std::string& value, const std::string& context) const
-    {
-        const auto& task_type = value;
-        if (task_type == "delay")
-        {
-            return TaskType::Delay;
-        }
-        if (task_type == "transport")
-        {
-            return TaskType::Transport;
-        }
-        if (task_type == "acquireResource")
-        {
-            return TaskType::AcquireResource;
-        }
-        if (task_type == "releaseResource")
-        {
-            return TaskType::ReleaseResource;
-        }
-        if (task_type == "combine")
-        {
-            return TaskType::Combine;
-        }
-        if (task_type == "split")
-        {
-            return TaskType::Split;
-        }
-
-        throw std::runtime_error(context + " uses unsupported _taskType '" + task_type + "'. Only 'delay', 'transport', 'acquireResource', 'releaseResource', 'combine', and 'split' are supported.");
     }
 
     [[nodiscard]] CombineSpec read_combine_spec(const PropertyMap& properties, const std::string& context) const
     {
         CombineSpec combine;
-        combine.method = read_required_enum<CombineMethod>(properties, "_method", context);
-        combine.ratio = read_required_positive_double(properties, "_ratio", context);
-        if (combine.ratio < 1.0)
-        {
-            throw std::runtime_error(context + " property '_ratio' must be greater than or equal to 1 for combine tasks.");
-        }
-        combine.entity_type = read_required_text(properties, "_entityType", context);
-        combine.use_quantity_property = read_required_bool(properties, "_useQuantityProperty", context);
+        combine.method = parse_enum<CombineMethod>(require_text(properties, "_method", context), "_method", context);
+        combine.use_quantity_property = parse_bool(require_text(properties, "_useQuantityProperty", context), "_useQuantityProperty", context);
         if (combine.use_quantity_property)
         {
-            combine.quantity_property = read_required_text(properties, "_quantityProperty", context);
+            combine.quantity_property = require_text(properties, "_quantityProperty", context);
         }
-        if (combine.method == CombineMethod::GroupRatio)
+        combine.ratio = parse_double(require_text(properties, "_ratio", context), "_ratio", context);
+        if (combine.ratio <= 0.0)
         {
-            combine.group_property = read_required_text(properties, "_groupProperty", context);
+            throw std::runtime_error(context + " value '_ratio' must be greater than zero.");
         }
-        return combine;
+        if (combine.ratio < 1.0)
+        {
+            throw std::runtime_error(context + " value '_ratio' must be greater than or equal to 1.");
+        }
+        combine.entity_type = require_text(properties, "_entityType", context);
+
+        switch (combine.method)
+        {
+            case CombineMethod::Ratio:
+                return combine;
+            case CombineMethod::GroupRatio:
+                combine.group_property = require_text(properties, "_groupProperty", context);
+                return combine;
+        }
+
+        throw std::runtime_error(context + " uses unsupported combine method.");
     }
 
     [[nodiscard]] SplitSpec read_split_spec(const PropertyMap& properties, const std::string& context) const
     {
         SplitSpec split;
-        split.method = read_required_enum<SplitMethod>(properties, "_method", context);
-        split.one_off = read_required_bool(properties, "_oneOff", context);
+        split.method = parse_enum<SplitMethod>(require_text(properties, "_method", context), "_method", context);
+        split.one_off = parse_bool(require_text(properties, "_oneOff", context), "_oneOff", context);
 
         switch (split.method)
         {
             case SplitMethod::Ratio:
-                split.ratio = read_required_positive_double(properties, "_ratio", context);
-                split.entity_type = read_required_text(properties, "_entityType", context);
+                split.ratio = parse_double(require_text(properties, "_ratio", context), "_ratio", context);
+                if (split.ratio <= 0.0)
+                {
+                    throw std::runtime_error(context + " value '_ratio' must be greater than zero.");
+                }
+                split.entity_type = require_text(properties, "_entityType", context);
                 return split;
             case SplitMethod::Restore:
                 return split;
             case SplitMethod::Quantity:
-                split.quantity_property = read_required_text(properties, "_quantityProperty", context);
+                split.quantity_property = require_text(properties, "_quantityProperty", context);
                 return split;
         }
 
@@ -489,39 +410,40 @@ private:
     [[nodiscard]] TaskSpec read_task_spec(const pugi::xml_node& node) const
     {
         const auto properties = read_properties(node);
-        const auto context = "Task '" + read_required_attribute(node, "id", "Task") + "'";
-        const auto declared_task_type = read_task_type(read_required_text(properties, "_taskType", context), context);
+        const auto task_id = require_text(node.attribute("id").value(), "id", "Task");
+        const auto context = "Task '" + task_id + "'";
+        const auto declared_task_type = parse_enum<TaskType>(require_text(properties, "_taskType", context), "_taskType", context);
         TaskSpec task;
 
         task.type = declared_task_type;
-        if (task.type == TaskType::Transport)
+        switch (task.type)
         {
-            task.distance = read_required_double(properties, "_distance", context);
-            if (task.distance < 0.0)
-            {
-                throw std::runtime_error(context + " property '_distance' must be non-negative.");
-            }
-        }
-
-        if (task.type == TaskType::Delay || task.type == TaskType::Transport || task.type == TaskType::Combine || task.type == TaskType::Split)
-        {
-            task.duration_distribution = read_distribution(properties, "_distributionType", context);
-        }
-        if (task.type == TaskType::Combine)
-        {
-            task.combine = read_combine_spec(properties, context);
-        }
-        if (task.type == TaskType::Split)
-        {
-            task.split = read_split_spec(properties, context);
+            case TaskType::Delay:
+                task.duration_distribution = read_distribution(properties, "_distributionType", context);
+                break;
+            case TaskType::Transport:
+                task.distance = parse_double(require_text(properties, "_distance", context), "_distance", context);
+                if (task.distance < 0.0)
+                {
+                    throw std::runtime_error(context + " value '_distance' must be non-negative.");
+                }
+                task.duration_distribution = read_distribution(properties, "_distributionType", context);
+                break;
+            case TaskType::AcquireResource:
+            case TaskType::ReleaseResource:
+                break;
+            case TaskType::Combine:
+                task.duration_distribution = read_distribution(properties, "_distributionType", context);
+                task.combine = read_combine_spec(properties, context);
+                break;
+            case TaskType::Split:
+                task.duration_distribution = read_distribution(properties, "_distributionType", context);
+                task.split = read_split_spec(properties, context);
+                break;
         }
         if (properties.contains("_resourceStrategy"))
         {
-            if (task.type == TaskType::ReleaseResource)
-            {
-                throw std::runtime_error(context + " must not define '_resourceStrategy'.");
-            }
-            task.resource_strategy = read_required_enum<ResourceStrategy>(properties, "_resourceStrategy", context);
+            task.resource_strategy = parse_enum<ResourceStrategy>(require_text(properties, "_resourceStrategy", context), "_resourceStrategy", context);
         }
 
         return task;
@@ -530,18 +452,19 @@ private:
     [[nodiscard]] ResourceDefinition read_resource_definition(const pugi::xml_node& node) const
     {
         const auto properties = read_properties(node);
-        const auto context = "Resource '" + read_required_attribute(node, "id", "Resource") + "'";
+        const auto resource_id = require_text(node.attribute("id").value(), "id", "Resource");
+        const auto context = "Resource '" + resource_id + "'";
 
-        const auto resource_type = read_required_text(properties, "_resourceType", context);
+        const auto resource_type = require_text(properties, "_resourceType", context);
         if (resource_type != "resource")
         {
             throw std::runtime_error(context + " uses unsupported _resourceType '" + resource_type + "'.");
         }
 
         ResourceDefinition definition;
-        definition.id = read_required_attribute(node, "id", "Resource");
+        definition.id = resource_id;
         definition.name = node.attribute("name").value();
-        definition.capacity = static_cast<int>(read_required_count(properties, "_capacity", context));
+        definition.capacity = static_cast<int>(parse_count(require_text(properties, "_capacity", context), "_capacity", context, static_cast<std::size_t>(std::numeric_limits<int>::max())));
         return definition;
     }
 
@@ -560,7 +483,7 @@ private:
 
     void initialize_model(const pugi::xml_node& process)
     {
-        model_.process_id = read_required_attribute(process, "id", "Process");
+        model_.process_id = require_text(process.attribute("id").value(), "id", "Process");
         model_.process_name = process.attribute("name").value();
     }
 
@@ -603,7 +526,7 @@ private:
     void parse_start_event(const pugi::xml_node& child)
     {
         NodeDefinition definition;
-        definition.id = read_required_attribute(child, "id", "Start event");
+        definition.id = require_text(child.attribute("id").value(), "id", "Start event");
         definition.name = child.attribute("name").value();
         definition.type = NodeType::StartEvent;
         definition.generator = read_generator_spec(child);
@@ -614,7 +537,7 @@ private:
     void parse_task(const pugi::xml_node& child)
     {
         NodeDefinition definition;
-        definition.id = read_required_attribute(child, "id", "Task");
+        definition.id = require_text(child.attribute("id").value(), "id", "Task");
         definition.name = child.attribute("name").value();
         definition.type = NodeType::Task;
         definition.task = read_task_spec(child);
@@ -625,7 +548,7 @@ private:
     void parse_end_event(const pugi::xml_node& child)
     {
         NodeDefinition definition;
-        definition.id = read_required_attribute(child, "id", "End event");
+        definition.id = require_text(child.attribute("id").value(), "id", "End event");
         definition.name = child.attribute("name").value();
         definition.type = NodeType::EndEvent;
         model_.nodes.insert_or_assign(definition.id, std::move(definition));
@@ -635,13 +558,16 @@ private:
     {
         const auto properties = read_properties(child);
         NodeDefinition definition;
-        definition.id = read_required_attribute(child, "id", "Exclusive gateway");
+        definition.id = require_text(child.attribute("id").value(), "id", "Exclusive gateway");
         definition.name = child.attribute("name").value();
         definition.type = NodeType::ExclusiveGateway;
-        definition.gateway_criteria = read_optional_gateway_criteria(properties, "Exclusive gateway '" + definition.id + "'");
+        if (const auto found = properties.find("_criteria"); found != properties.end() && !found->second.empty())
+        {
+            definition.gateway_criteria = parse_enum<GatewayCriteria>(found->second, "_criteria", "Exclusive gateway '" + definition.id + "'");
+        }
         if (definition.gateway_criteria == GatewayCriteria::Property)
         {
-            definition.gateway_property_name = read_required_text(properties, "_propertyName", "Exclusive gateway '" + definition.id + "'");
+            definition.gateway_property_name = require_text(properties, "_propertyName", "Exclusive gateway '" + definition.id + "'");
         }
         model_.nodes.insert_or_assign(definition.id, std::move(definition));
     }
@@ -655,18 +581,18 @@ private:
     void parse_sequence_flow(const pugi::xml_node& child)
     {
         SequenceFlowDefinition flow;
-        flow.id = read_required_attribute(child, "id", "Sequence flow");
+        flow.id = require_text(child.attribute("id").value(), "id", "Sequence flow");
         flow.name = child.attribute("name").value();
-        flow.source_id = read_required_attribute(child, "sourceRef", "Sequence flow");
-        flow.target_id = read_required_attribute(child, "targetRef", "Sequence flow");
+        flow.source_id = require_text(child.attribute("sourceRef").value(), "sourceRef", "Sequence flow");
+        flow.target_id = require_text(child.attribute("targetRef").value(), "targetRef", "Sequence flow");
         model_.flows.push_back(std::move(flow));
     }
 
     void parse_association(const pugi::xml_node& child)
     {
         associations_.emplace_back(
-            read_required_attribute(child, "sourceRef", "Association"),
-            read_required_attribute(child, "targetRef", "Association"));
+            require_text(child.attribute("sourceRef").value(), "sourceRef", "Association"),
+            require_text(child.attribute("targetRef").value(), "targetRef", "Association"));
     }
 
     void parse_task_data_output_associations(const pugi::xml_node& task_node, const std::string& task_id)
@@ -774,18 +700,18 @@ private:
                 auto& flow = flow_by_id(flow_id);
                 if (definition.gateway_criteria == GatewayCriteria::Weight)
                 {
-                    flow.weight = parse_required_positive_double(flow.name, "Sequence flow '" + flow.id + "'");
+                    flow.weight = parse_double(require_text(flow.name.c_str(), "name", "Sequence flow '" + flow.id + "'"), "name", "Sequence flow '" + flow.id + "'");
+                    if (*flow.weight <= 0.0)
+                    {
+                        throw std::runtime_error("Sequence flow '" + flow.id + "' value 'name' must be greater than zero.");
+                    }
                     flow.property_value.reset();
                     continue;
                 }
 
                 if (definition.gateway_criteria == GatewayCriteria::Property)
                 {
-                    if (flow.name.empty())
-                    {
-                        throw std::runtime_error("Sequence flow '" + flow.id + "' must define a non-empty property value in sequence flow name.");
-                    }
-                    flow.property_value = flow.name;
+                    flow.property_value = require_text(flow.name.c_str(), "name", "Sequence flow '" + flow.id + "'");
                     flow.weight.reset();
                 }
             }
@@ -828,10 +754,6 @@ private:
                     {
                         throw std::runtime_error("Start event '" + node_id + "' must have exactly one outgoing sequence flow.");
                     }
-                    if (definition.generator->type == InitiatorType::Random)
-                    {
-                        validate_distribution(definition.generator->interval_distribution, "Start event '" + node_id + "'");
-                    }
                     break;
                 case NodeType::Task:
                     if (!definition.task.has_value())
@@ -872,15 +794,6 @@ private:
                                 throw std::runtime_error("Task '" + node_id + "' must bind at least one resource when '_taskType=acquireResource'.");
                             }
                         }
-
-                        if (definition.task->type == TaskType::ReleaseResource && definition.task->resource_strategy.has_value())
-                        {
-                            throw std::runtime_error("Task '" + node_id + "' must not define '_resourceStrategy'.");
-                        }
-                    }
-                    if (definition.task->type == TaskType::Delay || definition.task->type == TaskType::Transport || definition.task->type == TaskType::Combine || definition.task->type == TaskType::Split)
-                    {
-                        validate_distribution(definition.task->duration_distribution, "Task '" + node_id + "'");
                     }
                     if (definition.task->type == TaskType::Combine && !definition.task->combine.has_value())
                     {

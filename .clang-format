@@ -26,4 +26,4 @@ IncludeCategories:
     Priority: 2
   - Regex: '^"[a-zA-Z0-9_-]+\.(h|hpp)"'
     Priority: 3
-InsertTrailingNewline: true
+InsertNewlineAtEOF: true

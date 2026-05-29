@@ -35,7 +35,6 @@ struct ProcessToken
 {
     std::string entity_id;
     std::string entity_type;
-    std::string token_id;
     double created_at{0.0};
     std::string entity_name;
     std::unordered_map<std::string, std::string> properties;
@@ -903,13 +902,12 @@ private:
     entt::entity create_token(
         const std::string& entity_id,
         const std::string& entity_type,
-        const std::string& token_id,
         double created_at,
         std::string entity_name,
         std::unordered_map<std::string, std::string> properties = {})
     {
         const auto entity = registry_.create();
-        registry_.emplace<ProcessToken>(entity, ProcessToken{entity_id, entity_type, token_id, created_at, std::move(entity_name), std::move(properties)});
+        registry_.emplace<ProcessToken>(entity, ProcessToken{entity_id, entity_type, created_at, std::move(entity_name), std::move(properties)});
         return entity;
     }
 
@@ -1158,16 +1156,16 @@ std::vector<entt::entity> Engine::RunState::create_restored_tokens(const Restora
     std::vector<entt::entity> restored_tokens;
     restored_tokens.reserve(snapshot.restore_count);
 
-    const auto create_with_properties = [&](std::unordered_map<std::string, std::string> properties, const std::string& entity_id, const std::string& token_id, const std::string& entity_name)
+    const auto create_with_properties = [&](std::unordered_map<std::string, std::string> properties, const std::string& entity_id, const std::string& entity_name)
     {
-        const auto restored = create_token(entity_id, snapshot.token.entity_type, token_id, snapshot.token.created_at, entity_name, std::move(properties));
+        const auto restored = create_token(entity_id, snapshot.token.entity_type, snapshot.token.created_at, entity_name, std::move(properties));
         tokens_.restore_snapshot_history(registry_, restored, snapshot.history);
         restored_tokens.push_back(restored);
     };
 
     if (!snapshot.quantity.has_value())
     {
-        create_with_properties(snapshot.token.properties, snapshot.token.entity_id, snapshot.token.token_id, snapshot.token.entity_name);
+        create_with_properties(snapshot.token.properties, snapshot.token.entity_id, snapshot.token.entity_name);
         if (!snapshot.held_resource_ids.empty())
         {
             registry_.emplace<HeldResources>(restored_tokens.back(), HeldResources{snapshot.held_resource_ids});
@@ -1180,7 +1178,7 @@ std::vector<entt::entity> Engine::RunState::create_restored_tokens(const Restora
         auto properties = snapshot.token.properties;
         properties[*snapshot.quantity] = "1";
         const auto entity_id = next_entity_id(restore_node_id, snapshot.token.entity_type);
-        create_with_properties(std::move(properties), entity_id, entity_id + ".t0", snapshot.token.entity_name);
+        create_with_properties(std::move(properties), entity_id, snapshot.token.entity_name);
         if (!snapshot.held_resource_ids.empty())
         {
             registry_.emplace<HeldResources>(restored_tokens.back(), HeldResources{snapshot.held_resource_ids});
@@ -1327,7 +1325,7 @@ void Engine::RunState::schedule_split_outputs(entt::entity token_entity, const N
         {
             const auto entity_id = next_entity_id(node.id, node.task->split->entity_type);
             const auto entity_name = node.name + "-" + node.task->split->entity_type + "-" + entity_id.substr(entity_id.rfind('_') + 1);
-            const auto child = create_token(entity_id, node.task->split->entity_type, entity_id + ".t0", start_time, entity_name);
+            const auto child = create_token(entity_id, node.task->split->entity_type, start_time, entity_name);
             outputs.push_back(child);
         }
     }
@@ -1341,7 +1339,7 @@ void Engine::RunState::schedule_split_outputs(entt::entity token_entity, const N
         {
             const auto entity_id = next_entity_id(node.id, parent.entity_type);
             const auto entity_name = node.name + "-" + parent.entity_type + "-" + entity_id.substr(entity_id.rfind('_') + 1);
-            const auto child = create_token(entity_id, parent.entity_type, entity_id + ".t0", start_time, entity_name, parent.properties);
+            const auto child = create_token(entity_id, parent.entity_type, start_time, entity_name, parent.properties);
             outputs.push_back(child);
         }
     }
@@ -1439,7 +1437,7 @@ void Engine::RunState::handle_generate_entity(const ScheduledEvent& event)
 
     const auto seq = entity_id.substr(entity_id.rfind('_') + 1);
     const auto entity_name = start_node.name + "-" + start_node.generator->entity_type + "-" + seq;
-    const auto token_entity = create_token(entity_id, start_node.generator->entity_type, entity_id + ".t0", event.time, entity_name, std::move(properties));
+    const auto token_entity = create_token(entity_id, start_node.generator->entity_type, event.time, entity_name, std::move(properties));
     const auto token_component = token(token_entity);
     ++result_.generated_entities;
     log_event(event.time, token_component, start_node, "entity_generated");
@@ -1501,7 +1499,7 @@ void Engine::RunState::handle_arrive_node(const ScheduledEvent& event)
 
                 const auto entity_id = next_entity_id(node.id, combine.entity_type);
                 const auto batch_entity_name = node.name + "-" + combine.entity_type + "-" + entity_id.substr(entity_id.rfind('_') + 1);
-                const auto batch_token = create_token(entity_id, combine.entity_type, entity_id + ".t0", event.time, batch_entity_name);
+                const auto batch_token = create_token(entity_id, combine.entity_type, event.time, batch_entity_name);
                 registry_.emplace<CombineBatch>(batch_token, CombineBatch{members});
                 tokens_.set_combine_history(registry_, batch_token, std::move(snapshots));
 

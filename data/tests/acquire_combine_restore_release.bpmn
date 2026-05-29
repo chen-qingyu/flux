@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+    xmlns:camunda="http://camunda.org/schema/1.0/bpmn" id="Definitions_AcquireCombineRestoreRelease" targetNamespace="http://bpmn.io/schema/bpmn">
+    <bpmn:process id="Process_acquire_combine_restore_release" name="获资合并还原释放综合流程" isExecutable="true">
+        <bpmn:startEvent id="Event_acquire_combine" name="外部发生器">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_initiatorType" value="external" />
+                    <camunda:property name="_entityType" value="item" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:outgoing>Flow_start_to_acquire</bpmn:outgoing>
+        </bpmn:startEvent>
+
+        <bpmn:sequenceFlow id="Flow_start_to_acquire" sourceRef="Event_acquire_combine" targetRef="Task_acquire" />
+
+        <bpmn:task id="Task_acquire" name="获取资源">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_taskType" value="acquireResource" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:incoming>Flow_start_to_acquire</bpmn:incoming>
+            <bpmn:outgoing>Flow_acquire_to_transport</bpmn:outgoing>
+        </bpmn:task>
+
+        <bpmn:sequenceFlow id="Flow_acquire_to_transport" sourceRef="Task_acquire" targetRef="Task_transport" />
+
+        <bpmn:task id="Task_transport" name="运输活动">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_taskType" value="transport" />
+                    <camunda:property name="_distance" value="10" />
+                    <camunda:property name="_distributionType" value="static" />
+                    <camunda:property name="_staticInterval" value="1" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:incoming>Flow_acquire_to_transport</bpmn:incoming>
+            <bpmn:outgoing>Flow_transport_to_combine</bpmn:outgoing>
+        </bpmn:task>
+
+        <bpmn:sequenceFlow id="Flow_transport_to_combine" sourceRef="Task_transport" targetRef="Task_combine" />
+
+        <bpmn:task id="Task_combine" name="合并活动">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_taskType" value="combine" />
+                    <camunda:property name="_method" value="ratio" />
+                    <camunda:property name="_ratio" value="5" />
+                    <camunda:property name="_distributionType" value="static" />
+                    <camunda:property name="_staticInterval" value="2" />
+                    <camunda:property name="_entityType" value="bundle" />
+                    <camunda:property name="_useQuantityProperty" value="true" />
+                    <camunda:property name="_quantity" value="qty" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:incoming>Flow_transport_to_combine</bpmn:incoming>
+            <bpmn:outgoing>Flow_combine_to_restore</bpmn:outgoing>
+        </bpmn:task>
+
+        <bpmn:sequenceFlow id="Flow_combine_to_restore" sourceRef="Task_combine" targetRef="Task_restore" />
+
+        <bpmn:task id="Task_restore" name="还原活动">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_taskType" value="split" />
+                    <camunda:property name="_method" value="restore" />
+                    <camunda:property name="_oneOff" value="true" />
+                    <camunda:property name="_distributionType" value="static" />
+                    <camunda:property name="_staticInterval" value="0" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:incoming>Flow_combine_to_restore</bpmn:incoming>
+            <bpmn:outgoing>Flow_restore_to_release</bpmn:outgoing>
+        </bpmn:task>
+
+        <bpmn:sequenceFlow id="Flow_restore_to_release" sourceRef="Task_restore" targetRef="Task_release" />
+
+        <bpmn:task id="Task_release" name="释放资源">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_taskType" value="releaseResource" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+            <bpmn:incoming>Flow_restore_to_release</bpmn:incoming>
+            <bpmn:outgoing>Flow_release_to_end</bpmn:outgoing>
+        </bpmn:task>
+
+        <bpmn:sequenceFlow id="Flow_release_to_end" sourceRef="Task_release" targetRef="Event_end" />
+
+        <bpmn:endEvent id="Event_end" name="结束">
+            <bpmn:incoming>Flow_release_to_end</bpmn:incoming>
+        </bpmn:endEvent>
+
+        <bpmn:dataStoreReference id="DataStoreReference_worker" name="工人">
+            <bpmn:extensionElements>
+                <camunda:properties>
+                    <camunda:property name="_resourceType" value="resource" />
+                    <camunda:property name="_capacity" value="10" />
+                </camunda:properties>
+            </bpmn:extensionElements>
+        </bpmn:dataStoreReference>
+
+        <bpmn:association id="Association_acquire_worker" associationDirection="Both" sourceRef="Task_acquire" targetRef="DataStoreReference_worker" />
+        <bpmn:association id="Association_release_worker" associationDirection="Both" sourceRef="Task_release" targetRef="DataStoreReference_worker" />
+    </bpmn:process>
+</bpmn:definitions>

@@ -317,6 +317,64 @@ TEST_CASE("Group-ratio combine groups quantities independently", "[runtime][comb
     }
 }
 
+TEST_CASE("Acquire-combine-restore-release preserves held resources through snapshot", "[runtime][acquire][combine][restore][release]")
+{
+    const auto result = flux::test_support::run_model(std::filesystem::path("data") / "tests" / "acquire_combine_restore_release.bpmn");
+    const auto task_starts = flux::test_support::select_events(result, "task_start");
+    const auto task_finishes = flux::test_support::select_events(result, "task_finish");
+    const auto exits = flux::test_support::select_events(result, "entity_exit");
+
+    const auto count_task = [&](const std::string& task_id, const std::string& event_type)
+    {
+        return static_cast<std::size_t>(std::count_if(event_type == "task_start" ? task_starts.begin() : task_finishes.begin(),
+                                                      event_type == "task_start" ? task_starts.end() : task_finishes.end(),
+                                                      [&](const auto& row)
+                                                      { return row.node_id == task_id; }));
+    };
+
+    REQUIRE(result.generated_entities == 10);
+    REQUIRE(result.completed_entities == 10);
+
+    // 10 acquireResource + 10 transport + 2 combine + 2 restore + 10 releaseResource
+    REQUIRE(task_starts.size() == 34);
+    REQUIRE(task_finishes.size() == 34);
+
+    REQUIRE(count_task("Task_acquire", "task_start") == 10);
+    REQUIRE(count_task("Task_acquire", "task_finish") == 10);
+    REQUIRE(count_task("Task_transport", "task_start") == 10);
+    REQUIRE(count_task("Task_transport", "task_finish") == 10);
+    REQUIRE(count_task("Task_combine", "task_start") == 2);
+    REQUIRE(count_task("Task_combine", "task_finish") == 2);
+    REQUIRE(count_task("Task_restore", "task_start") == 2);
+    REQUIRE(count_task("Task_restore", "task_finish") == 2);
+    REQUIRE(count_task("Task_release", "task_start") == 10);
+    REQUIRE(count_task("Task_release", "task_finish") == 10);
+
+    // 所有 exit 的原实体类型应为 item（restore 后恢复为原始 entity_type）
+    for (const auto& row : exits)
+    {
+        REQUIRE(row.node_id == "Event_end");
+        REQUIRE(row.entity_type == "item");
+    }
+
+    // 资源 Worker 应有 10 次分配（acquire）和 10 次释放（release）
+    // allocation_count = 10 (all 10 items each acquire once)
+    REQUIRE(result.reports.resource_summary_rows.size() == 1);
+    REQUIRE(result.reports.resource_summary_rows[0].allocation_count == 10);
+
+    // timeline 应有 20 条记录：10 allocate + 10 release
+    const auto alloc_count = std::count_if(result.reports.resource_timeline_rows.begin(),
+                                           result.reports.resource_timeline_rows.end(),
+                                           [](const auto& row)
+                                           { return row.change_type == "allocate"; });
+    const auto release_count = std::count_if(result.reports.resource_timeline_rows.begin(),
+                                             result.reports.resource_timeline_rows.end(),
+                                             [](const auto& row)
+                                             { return row.change_type == "release"; });
+    REQUIRE(alloc_count == 10);
+    REQUIRE(release_count == 10);
+}
+
 #ifdef NDEBUG
 TEST_CASE("Multisrc runtime stays under three seconds", "[runtime][perf]")
 {

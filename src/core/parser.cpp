@@ -228,41 +228,21 @@ private:
         {
             return parse_double(require_text(properties, key, context), key, context);
         };
-        const auto distribution_type = parse_enum<DistributionType>(require_text(properties, type_key, context), type_key, context);
         DistributionSpec distribution;
-        distribution.type = distribution_type;
-        switch (distribution_type)
+        distribution.type = parse_enum<DistributionType>(require_text(properties, type_key, context), type_key, context);
+        switch (distribution.type)
         {
             case DistributionType::Static:
                 distribution.first = require_number("_staticInterval");
                 distribution.second = 0.0;
-                break;
-            case DistributionType::Uniform:
-                distribution.first = require_number("_min");
-                distribution.second = require_number("_max");
-                break;
-            case DistributionType::Exponential:
-                distribution.first = require_number("_mean");
-                distribution.second = 0.0;
-                break;
-            case DistributionType::Normal:
-                distribution.first = require_number("_mean");
-                distribution.second = require_number("_standardDeviation");
-                break;
-            case DistributionType::LogNormal:
-                distribution.first = require_number("_mean");
-                distribution.second = require_number("_standardDeviation");
-                break;
-        }
-        switch (distribution.type)
-        {
-            case DistributionType::Static:
                 if (distribution.first < 0.0)
                 {
                     throw std::runtime_error(context + " value '_staticInterval' must be non-negative.");
                 }
                 break;
             case DistributionType::Uniform:
+                distribution.first = require_number("_min");
+                distribution.second = require_number("_max");
                 if (distribution.first < 0.0)
                 {
                     throw std::runtime_error(context + " value '_min' must be non-negative.");
@@ -277,18 +257,28 @@ private:
                 }
                 break;
             case DistributionType::Exponential:
+                distribution.first = require_number("_mean");
+                distribution.second = 0.0;
                 if (distribution.first <= 0.0)
                 {
                     throw std::runtime_error(context + " value '_mean' must be greater than zero.");
                 }
                 break;
             case DistributionType::Normal:
+                distribution.first = require_number("_mean");
+                distribution.second = require_number("_standardDeviation");
                 if (distribution.first < 0.0)
                 {
                     throw std::runtime_error(context + " value '_mean' must be non-negative.");
                 }
-                [[fallthrough]];
+                if (distribution.second <= 0.0)
+                {
+                    throw std::runtime_error(context + " value '_standardDeviation' must be greater than zero.");
+                }
+                break;
             case DistributionType::LogNormal:
+                distribution.first = require_number("_mean");
+                distribution.second = require_number("_standardDeviation");
                 if (distribution.second <= 0.0)
                 {
                     throw std::runtime_error(context + " value '_standardDeviation' must be greater than zero.");
@@ -345,8 +335,9 @@ private:
                 generator.type = InitiatorType::External;
                 generator.external_records = read_external_records(start_id);
                 return generator;
+            default:
+                throw std::runtime_error("unreachable");
         }
-        return generator;
     }
 
     [[nodiscard]] CombineSpec read_combine_spec(const PropertyMap& properties, const std::string& context) const
@@ -359,10 +350,6 @@ private:
             combine.quantity_property = require_text(properties, "_quantityProperty", context);
         }
         combine.ratio = parse_double(require_text(properties, "_ratio", context), "_ratio", context);
-        if (combine.ratio <= 0.0)
-        {
-            throw std::runtime_error(context + " value '_ratio' must be greater than zero.");
-        }
         if (combine.ratio < 1.0)
         {
             throw std::runtime_error(context + " value '_ratio' must be greater than or equal to 1.");
@@ -376,9 +363,9 @@ private:
             case CombineMethod::GroupRatio:
                 combine.group_property = require_text(properties, "_groupProperty", context);
                 return combine;
+            default:
+                throw std::runtime_error("unreachable");
         }
-
-        throw std::runtime_error(context + " uses unsupported combine method.");
     }
 
     [[nodiscard]] SplitSpec read_split_spec(const PropertyMap& properties, const std::string& context) const
@@ -402,9 +389,9 @@ private:
             case SplitMethod::Quantity:
                 split.quantity_property = require_text(properties, "_quantityProperty", context);
                 return split;
+            default:
+                throw std::runtime_error("unreachable");
         }
-
-        throw std::runtime_error(context + " uses unsupported split method.");
     }
 
     [[nodiscard]] TaskSpec read_task_spec(const pugi::xml_node& node) const
@@ -769,30 +756,17 @@ private:
                         throw std::runtime_error("Task '" + node_id + "' must have exactly one outgoing sequence flow.");
                     }
                     {
-                        std::size_t resource_count = 0;
-                        if (const auto resources = model_.task_resources.find(node_id); resources != model_.task_resources.end())
-                        {
-                            resource_count = resources->second.size();
-                        }
+                        const auto& resources = model_.task_resources.find(node_id);
+                        const auto resource_count = resources != model_.task_resources.end() ? resources->second.size() : std::size_t{0};
 
-                        const auto require_resource_types =
-                            definition.task->type == TaskType::Delay ||
-                            definition.task->type == TaskType::Transport ||
-                            definition.task->type == TaskType::Combine ||
-                            definition.task->type == TaskType::Split ||
-                            definition.task->type == TaskType::AcquireResource;
-
-                        if (require_resource_types && resource_count > 1 && !definition.task->resource_strategy.has_value())
+                        if (definition.task->type != TaskType::ReleaseResource && resource_count > 1 && !definition.task->resource_strategy.has_value())
                         {
                             throw std::runtime_error("Task '" + node_id + "' must provide '_resourceStrategy' when multiple resources are associated.");
                         }
 
-                        if (definition.task->type == TaskType::AcquireResource)
+                        if (definition.task->type == TaskType::AcquireResource && resource_count == 0)
                         {
-                            if (resource_count == 0)
-                            {
-                                throw std::runtime_error("Task '" + node_id + "' must bind at least one resource when '_taskType=acquireResource'.");
-                            }
+                            throw std::runtime_error("Task '" + node_id + "' must bind at least one resource when '_taskType=acquireResource'.");
                         }
                     }
                     if (definition.task->type == TaskType::Combine && !definition.task->combine.has_value())

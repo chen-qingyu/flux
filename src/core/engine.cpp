@@ -201,9 +201,9 @@ public:
                 std::lognormal_distribution<double> distribution(spec.first, spec.second);
                 return distribution(generator_);
             }
+            default:
+                throw std::runtime_error("unreachable");
         }
-
-        return 0.0;
     }
 
     double sample_uniform(double minimum, double maximum)
@@ -1410,6 +1410,8 @@ void Engine::RunState::process_event(const ScheduledEvent& event)
         case ScheduledEventType::FinishTask:
             handle_finish_task(event);
             break;
+        default:
+            throw std::runtime_error("unreachable");
     }
 }
 
@@ -1536,13 +1538,8 @@ void Engine::RunState::handle_finish_task(const ScheduledEvent& event)
     const auto token_component = token(event.token);
     const auto active_task = registry_.get<ActiveTask>(event.token);
     const auto task_type = node.task->type;
-    const auto releases_allocation = task_type == TaskType::Delay ||
-                                     task_type == TaskType::Transport ||
-                                     task_type == TaskType::Combine ||
-                                     task_type == TaskType::ReleaseResource ||
-                                     task_type == TaskType::Split;
 
-    if (releases_allocation)
+    if (task_type != TaskType::AcquireResource)
     {
         apply_release(active_task.allocated_resources, event.time, token_component.entity_id, node.id);
     }

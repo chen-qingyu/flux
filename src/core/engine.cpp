@@ -58,7 +58,7 @@ struct RestorableTokenSnapshot
     ProcessToken token;
     std::shared_ptr<CombineHistory> history;
     std::size_t restore_count{1};
-    std::optional<std::string> quantity_property;
+    std::optional<std::string> quantity;
 };
 
 struct CombineHistory
@@ -530,9 +530,9 @@ public:
         const entt::registry& registry,
         entt::entity token_entity,
         std::size_t restore_count,
-        const std::optional<std::string>& quantity_property) const
+        const std::optional<std::string>& quantity) const
     {
-        return RestorableTokenSnapshot{registry.get<ProcessToken>(token_entity), snapshot_combine_history(registry, token_entity), restore_count, quantity_property};
+        return RestorableTokenSnapshot{registry.get<ProcessToken>(token_entity), snapshot_combine_history(registry, token_entity), restore_count, quantity};
     }
 
     void restore_snapshot_history(entt::registry& registry, entt::entity token_entity, const std::shared_ptr<CombineHistory>& history)
@@ -1163,7 +1163,7 @@ std::vector<entt::entity> Engine::RunState::create_restored_tokens(const Restora
         restored_tokens.push_back(restored);
     };
 
-    if (!snapshot.quantity_property.has_value())
+    if (!snapshot.quantity.has_value())
     {
         create_with_properties(snapshot.token.properties, snapshot.token.entity_id, snapshot.token.token_id);
         return restored_tokens;
@@ -1172,7 +1172,7 @@ std::vector<entt::entity> Engine::RunState::create_restored_tokens(const Restora
     for (std::size_t index = 0; index < snapshot.restore_count; ++index)
     {
         auto properties = snapshot.token.properties;
-        properties[*snapshot.quantity_property] = "1";
+        properties[*snapshot.quantity] = "1";
         const auto entity_id = next_entity_id(restore_node_id, snapshot.token.entity_type);
         create_with_properties(std::move(properties), entity_id, entity_id + ".t0");
     }
@@ -1247,7 +1247,7 @@ std::size_t Engine::RunState::combine_equivalent_units(const NodeDefinition& nod
         return 1;
     }
 
-    return read_positive_integer_property(token(token_entity), *combine.quantity_property, "Task '" + node.id + "'");
+    return read_positive_integer_property(token(token_entity), *combine.quantity, "Task '" + node.id + "'");
 }
 
 std::string Engine::RunState::combine_group_value(const NodeDefinition& node, entt::entity token_entity) const
@@ -1259,10 +1259,10 @@ std::string Engine::RunState::combine_group_value(const NodeDefinition& node, en
     }
 
     const auto& token_component = token(token_entity);
-    const auto found = token_component.properties.find(*combine.group_property);
+    const auto found = token_component.properties.find(*combine.group);
     if (found == token_component.properties.end() || found->second.empty())
     {
-        throw std::runtime_error("Task '" + node.id + "' requires token property '" + *combine.group_property + "' for property-based combine grouping.");
+        throw std::runtime_error("Task '" + node.id + "' requires token property '" + *combine.group + "' for property-based combine grouping.");
     }
 
     return found->second;
@@ -1323,8 +1323,8 @@ void Engine::RunState::schedule_split_outputs(entt::entity token_entity, const N
     else if (node.task->split->method == SplitMethod::Quantity)
     {
         const auto& parent = token(token_entity);
-        const auto& quantity_property = node.task->split->quantity_property.value();
-        const auto output_count = read_positive_integer_property(parent, quantity_property, "Task '" + node.id + "'");
+        const auto& quantity = node.task->split->quantity.value();
+        const auto output_count = read_positive_integer_property(parent, quantity, "Task '" + node.id + "'");
         outputs.reserve(output_count);
         for (std::size_t index = 0; index < output_count; ++index)
         {
@@ -1480,9 +1480,9 @@ void Engine::RunState::handle_arrive_node(const ScheduledEvent& event)
                 snapshots.reserve(members.size());
                 for (const auto& member : members)
                 {
-                    if (combine.use_quantity_property)
+                    if (combine.quantity.has_value())
                     {
-                        snapshots.push_back(tokens_.snapshot_token(registry_, member.token, member.consumed_units, combine.quantity_property));
+                        snapshots.push_back(tokens_.snapshot_token(registry_, member.token, member.consumed_units, combine.quantity));
                     }
                     else
                     {
@@ -1585,25 +1585,25 @@ std::string Engine::RunState::select_exclusive_gateway_target(const NodeDefiniti
         throw std::runtime_error("Exclusive gateway '" + node.id + "' must define routing criteria before execution.");
     }
 
-    if (*node.gateway_criteria == GatewayCriteria::Property)
+    if (*node.gateway_criteria == GatewayCriteria::Group)
     {
-        if (!node.gateway_property_name.has_value() || node.gateway_property_name->empty())
+        if (!node.group.has_value() || node.group->empty())
         {
-            throw std::runtime_error("Exclusive gateway '" + node.id + "' must define '_propertyName' when '_criteria=property'.");
+            throw std::runtime_error("Exclusive gateway '" + node.id + "' must define '_group' when '_criteria=group'.");
         }
 
         const auto& token_component = token(token_entity);
-        const auto property = token_component.properties.find(*node.gateway_property_name);
+        const auto property = token_component.properties.find(*node.group);
         if (property == token_component.properties.end())
         {
-            throw std::runtime_error("Entity '" + token_component.entity_id + "' is missing gateway property '" + *node.gateway_property_name + "' for exclusive gateway '" + node.id + "'.");
+            throw std::runtime_error("Entity '" + token_component.entity_id + "' is missing gateway property '" + *node.group + "' for exclusive gateway '" + node.id + "'.");
         }
 
         const auto& flow_ids = model_.outgoing_flow_ids.at(node.id);
         for (const auto& flow_id : flow_ids)
         {
             const auto& candidate = flux::flow(model_, flow_id);
-            if (candidate.property_value == property->second)
+            if (candidate.group_value == property->second)
             {
                 return candidate.target_id;
             }

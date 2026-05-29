@@ -23,8 +23,8 @@
                     <camunda:property name="_staticInterval" value="0" />
                     <camunda:property name="_entityType" value="batch" />
                     <camunda:property name="_useQuantityProperty" value="true" />
-                    <camunda:property name="_quantityProperty" value="qty" />
-                    <camunda:property name="_groupProperty" value="color" />
+                    <camunda:property name="_quantity" value="qty" />
+                    <camunda:property name="_group" value="color" />
                 </camunda:properties>
             </bpmn:extensionElements>
             <bpmn:incoming>Flow_start_combine</bpmn:incoming>
@@ -48,8 +48,8 @@
         <bpmn:exclusiveGateway id="Gateway_color" name="颜色分流">
             <bpmn:extensionElements>
                 <camunda:properties>
-                    <camunda:property name="_criteria" value="property" />
-                    <camunda:property name="_propertyName" value="color" />
+                    <camunda:property name="_criteria" value="group" />
+                    <camunda:property name="_group" value="color" />
                 </camunda:properties>
             </bpmn:extensionElements>
             <bpmn:incoming>Flow_restore_gateway</bpmn:incoming>

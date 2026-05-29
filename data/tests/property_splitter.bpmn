@@ -19,8 +19,8 @@
         <bpmn:exclusiveGateway id="Gateway_property" name="属性分流器">
             <bpmn:extensionElements>
                 <camunda:properties>
-                    <camunda:property name="_criteria" value="property" />
-                    <camunda:property name="_propertyName" value="action" />
+                    <camunda:property name="_criteria" value="group" />
+                    <camunda:property name="_group" value="action" />
                 </camunda:properties>
             </bpmn:extensionElements>
             <bpmn:incoming>Flow_start_gateway</bpmn:incoming>

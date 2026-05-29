@@ -23,7 +23,7 @@
                     <camunda:property name="_staticInterval" value="3" />
                     <camunda:property name="_entityType" value="bundle" />
                     <camunda:property name="_useQuantityProperty" value="true" />
-                    <camunda:property name="_quantityProperty" value="qty" />
+                    <camunda:property name="_quantity" value="qty" />
                 </camunda:properties>
             </bpmn:extensionElements>
             <bpmn:incoming>Flow_start_combine</bpmn:incoming>

@@ -189,12 +189,12 @@ python run.py data/demo.bpmn --seed 42
 
 必填：`_method`、`_distributionType`、`_useQuantityProperty`、`_entityType`、`_ratio`
 
-说明：按累计阈值合并。每次产出 1 个新实体都对应 1 次独立的 combine 执行，因此会各自消耗一份配置的处理时长，也会各自参与资源申请。`_useQuantityProperty=true|false` 表示是否把某个实体属性解释为“等效实体数量”；当 `_useQuantityProperty=true` 时，还必须提供 `_quantityProperty`，且属性值必须是正整数。尾差会继续等待，直到后续输入跨过阈值；如果流程结束仍未跨过阈值，则尾差直接丢弃。该任务也可以绑定资源。
+说明：按累计阈值合并。每次产出 1 个新实体都对应 1 次独立的 combine 执行，因此会各自消耗一份配置的处理时长，也会各自参与资源申请。`_useQuantityProperty=true|false` 表示是否把某个实体属性解释为“等效实体数量”；当 `_useQuantityProperty=true` 时，还必须提供 `_quantity`，且属性值必须是正整数。尾差会继续等待，直到后续输入跨过阈值；如果流程结束仍未跨过阈值，则尾差直接丢弃。该任务也可以绑定资源。
 
 支持方法：
 
-- `_method=ratio`：按全任务累计做 `N -> 1` 合并。未启用数量属性时，每个到达实体记作 `1` 个等效实体；启用后，等效实体数取自 `_quantityProperty`。`_ratio` 支持大于等于 `1` 的整数或浮点数，例如 `38` 个等效实体经过 `_ratio=3.8` 的合并后会产生 `10` 个新实体
-- `_method=groupRatio`：还需要 `_groupProperty`，系统会先按该属性值分组，再在每个分组内独立按比例合并；若启用了数量属性，则每个分组累计的是等效实体数
+- `_method=ratio`：按全任务累计做 `N -> 1` 合并。未启用数量属性时，每个到达实体记作 `1` 个等效实体；启用后，等效实体数取自 `_quantity`。`_ratio` 支持大于等于 `1` 的整数或浮点数，例如 `38` 个等效实体经过 `_ratio=3.8` 的合并后会产生 `10` 个新实体
+- `_method=groupRatio`：还需要 `_group`，系统会先按该属性值分组，再在每个分组内独立按比例合并；若启用了数量属性，则每个分组累计的是等效实体数
 
 `restore` 与数量型合并兼容：如果某个实体通过数量属性贡献了多个等效实体，后续 `split restore` 会按“实际被消费的等效实体数”恢复。例如 `qty=12`、`_ratio=5` 时可产出 `2` 个合并实体，后续还原时会恢复成 `5 + 5` 个实体。
 
@@ -208,13 +208,13 @@ python run.py data/demo.bpmn --seed 42
 
 - `_method=ratio`：还需要 `_ratio` 和新的 `_entityType`，表示 `1 -> M` 拆分。处理到第 `n` 个输入实体时，累计产出数为 `floor(n * _ratio)`，每次只补齐新增的输出，因此 `_ratio` 支持正整数和正浮点数
 - `_method=restore`：要求输入实体之前由 `combine` 生成；会按最近一次未还原的合并记录恢复原始实体ID、类型和数量。支持嵌套。
-- `_method=quantity`：还需要 `_quantityProperty`，表示按实体属性里的正整数数量拆分。该属性来自 `_initiatorType=external` 的 CSV 自定义列名。拆分后子实体类型保持不变，并继承原实体属性；如果属性缺失、不是正整数，或值小于等于 `0`，会直接报错
+- `_method=quantity`：还需要 `_quantity`，表示按实体属性里的正整数数量拆分。该属性来自 `_initiatorType=external` 的 CSV 自定义列名。拆分后子实体类型保持不变，并继承原实体属性；如果属性缺失、不是正整数，或值小于等于 `0`，会直接报错
 
 ### 网关
 
 必填：`_criteria`
 
-支持类型：`weight`、`property`
+支持类型：`weight`、`group`
 
 说明：用于根据配置把实体分流到不同出边。
 
@@ -222,14 +222,14 @@ python run.py data/demo.bpmn --seed 42
   - 要求：每条出边的 `sequenceFlow.name` 为正数权重（例如 `1`、`2`、`3.5`）。
   - 解析阶段会校验 `_criteria` 是否存在以及每条出边是否都提供了正数权重。
 
-- 当 `_criteria=property` 时：按 `_propertyName` 的属性值做精确匹配分支。
-  - 要求：必须提供 `_propertyName`；每条出边的 `sequenceFlow.name` 必须为非空且在同一网关下唯一。
+- 当 `_criteria=group` 时：按 `_group` 的属性值做精确匹配分支。
+  - 要求：必须提供 `_group`；每条出边的 `sequenceFlow.name` 必须为非空且在同一网关下唯一。
   - 运行时如果实体缺少该属性或属性值无法匹配任何出边，会直接报错终止。
 
 规则举例：
 
 - 权重示例：三条出边权重为 `1`、`2`、`3`，长期比例接近 `1/6`、`2/6`、`3/6`。
-- 属性示例：外部 CSV 含 `action` 列，网关配置 `_criteria=property` 和 `_propertyName=action`，若两条出边 `sequenceFlow.name` 为 `get`、`put`，则 `action=get` 的实体走 `get` 分支，`action=put` 的实体走 `put` 分支。
+- 属性示例：外部 CSV 含 `action` 列，网关配置 `_criteria=group` 和 `_group=action`，若两条出边 `sequenceFlow.name` 为 `get`、`put`，则 `action=get` 的实体走 `get` 分支，`action=put` 的实体走 `put` 分支。
 
 ### 资源
 

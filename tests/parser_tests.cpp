@@ -85,13 +85,13 @@ TEST_CASE("Parser reads property splitter model", "[parser][splitter-property]")
     REQUIRE(start.generator->external_records[3].properties.at("action") == "get");
 
     const auto& gateway = flux::node(model, "Gateway_property");
-    REQUIRE(gateway.gateway_criteria == flux::GatewayCriteria::Property);
-    REQUIRE(gateway.gateway_property_name == std::optional<std::string>{"action"});
+    REQUIRE(gateway.gateway_criteria == flux::GatewayCriteria::Group);
+    REQUIRE(gateway.group == std::optional<std::string>{"action"});
 
     const auto& get_flow = flux::flow(model, "Flow_property_get");
     const auto& put_flow = flux::flow(model, "Flow_property_put");
-    REQUIRE(get_flow.property_value == std::optional<std::string>{"get"});
-    REQUIRE(put_flow.property_value == std::optional<std::string>{"put"});
+    REQUIRE(get_flow.group_value == std::optional<std::string>{"get"});
+    REQUIRE(put_flow.group_value == std::optional<std::string>{"put"});
 }
 
 TEST_CASE("Parser reads transport task model", "[parser][transport]")
@@ -161,8 +161,8 @@ TEST_CASE("Parser reads combine and split ratio task model", "[parser][combine-s
     REQUIRE(combine.task->combine->ratio == 4);
     REQUIRE(combine.task->combine->entity_type == "truck");
     REQUIRE(!combine.task->combine->use_quantity_property);
-    REQUIRE(!combine.task->combine->quantity_property.has_value());
-    REQUIRE(!combine.task->combine->group_property.has_value());
+    REQUIRE(!combine.task->combine->quantity.has_value());
+    REQUIRE(!combine.task->combine->group.has_value());
 
     REQUIRE(split.task.has_value());
     REQUIRE(split.task->type == flux::TaskType::Split);
@@ -198,13 +198,13 @@ TEST_CASE("Parser reads split quantity task model", "[parser][split-quantity]")
     REQUIRE(split.task->type == flux::TaskType::Split);
     REQUIRE(split.task->split.has_value());
     REQUIRE(split.task->split->method == flux::SplitMethod::Quantity);
-    REQUIRE(split.task->split->quantity_property == std::optional<std::string>{"qty"});
+    REQUIRE(split.task->split->quantity == std::optional<std::string>{"qty"});
     REQUIRE(split.task->split->entity_type.empty());
     REQUIRE(split.task->split->one_off == true);
 
     const auto& gateway = flux::node(model, "Gateway_route");
-    REQUIRE(gateway.gateway_criteria == flux::GatewayCriteria::Property);
-    REQUIRE(gateway.gateway_property_name == std::optional<std::string>{"route"});
+    REQUIRE(gateway.gateway_criteria == flux::GatewayCriteria::Group);
+    REQUIRE(gateway.group == std::optional<std::string>{"route"});
 }
 
 TEST_CASE("Parser reads quantity-aware combine restore model", "[parser][combine][quantity]")
@@ -219,8 +219,8 @@ TEST_CASE("Parser reads quantity-aware combine restore model", "[parser][combine
     REQUIRE(combine.task->combine->ratio == 5.0);
     REQUIRE(combine.task->combine->entity_type == "bundle");
     REQUIRE(combine.task->combine->use_quantity_property);
-    REQUIRE(combine.task->combine->quantity_property == std::optional<std::string>{"qty"});
-    REQUIRE(!combine.task->combine->group_property.has_value());
+    REQUIRE(combine.task->combine->quantity == std::optional<std::string>{"qty"});
+    REQUIRE(!combine.task->combine->group.has_value());
 }
 
 TEST_CASE("Parser reads group-ratio combine model", "[parser][combine][group-ratio]")
@@ -235,6 +235,6 @@ TEST_CASE("Parser reads group-ratio combine model", "[parser][combine][group-rat
     REQUIRE(combine.task->combine->ratio == 2.0);
     REQUIRE(combine.task->combine->entity_type == "batch");
     REQUIRE(combine.task->combine->use_quantity_property);
-    REQUIRE(combine.task->combine->quantity_property == std::optional<std::string>{"qty"});
-    REQUIRE(combine.task->combine->group_property == std::optional<std::string>{"color"});
+    REQUIRE(combine.task->combine->quantity == std::optional<std::string>{"qty"});
+    REQUIRE(combine.task->combine->group == std::optional<std::string>{"color"});
 }

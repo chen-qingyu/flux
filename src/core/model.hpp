@@ -63,7 +63,7 @@ enum class SplitMethod
 enum class GatewayCriteria
 {
     Weight,
-    Property,
+    Group,
 };
 
 struct ExternalRecord
@@ -96,8 +96,8 @@ struct CombineSpec
     double ratio{0.0};
     std::string entity_type;
     bool use_quantity_property{false};
-    std::optional<std::string> quantity_property;
-    std::optional<std::string> group_property;
+    std::optional<std::string> quantity;
+    std::optional<std::string> group;
 };
 
 struct SplitSpec
@@ -106,7 +106,7 @@ struct SplitSpec
     double ratio{0.0};
     bool one_off{true};
     std::string entity_type;
-    std::optional<std::string> quantity_property;
+    std::optional<std::string> quantity;
 };
 
 // 任务配置同时承载执行时间、资源策略和运输距离等可选语义。
@@ -128,7 +128,7 @@ struct NodeDefinition
     std::optional<GeneratorSpec> generator;
     std::optional<TaskSpec> task;
     std::optional<GatewayCriteria> gateway_criteria;
-    std::optional<std::string> gateway_property_name;
+    std::optional<std::string> group;
 };
 
 struct SequenceFlowDefinition
@@ -138,7 +138,7 @@ struct SequenceFlowDefinition
     std::string source_id;
     std::string target_id;
     std::optional<double> weight;
-    std::optional<std::string> property_value;
+    std::optional<std::string> group_value;
 };
 
 struct ResourceDefinition

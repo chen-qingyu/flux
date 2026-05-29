@@ -347,7 +347,7 @@ private:
         combine.use_quantity_property = parse_bool(require_text(properties, "_useQuantityProperty", context), "_useQuantityProperty", context);
         if (combine.use_quantity_property)
         {
-            combine.quantity_property = require_text(properties, "_quantityProperty", context);
+            combine.quantity = require_text(properties, "_quantity", context);
         }
         combine.ratio = parse_double(require_text(properties, "_ratio", context), "_ratio", context);
         if (combine.ratio < 1.0)
@@ -361,7 +361,7 @@ private:
             case CombineMethod::Ratio:
                 return combine;
             case CombineMethod::GroupRatio:
-                combine.group_property = require_text(properties, "_groupProperty", context);
+                combine.group = require_text(properties, "_group", context);
                 return combine;
             default:
                 throw std::runtime_error("unreachable");
@@ -387,7 +387,7 @@ private:
             case SplitMethod::Restore:
                 return split;
             case SplitMethod::Quantity:
-                split.quantity_property = require_text(properties, "_quantityProperty", context);
+                split.quantity = require_text(properties, "_quantity", context);
                 return split;
             default:
                 throw std::runtime_error("unreachable");
@@ -552,9 +552,9 @@ private:
         {
             definition.gateway_criteria = parse_enum<GatewayCriteria>(found->second, "_criteria", "Exclusive gateway '" + definition.id + "'");
         }
-        if (definition.gateway_criteria == GatewayCriteria::Property)
+        if (definition.gateway_criteria == GatewayCriteria::Group)
         {
-            definition.gateway_property_name = require_text(properties, "_propertyName", "Exclusive gateway '" + definition.id + "'");
+            definition.group = require_text(properties, "_group", "Exclusive gateway '" + definition.id + "'");
         }
         model_.nodes.insert_or_assign(definition.id, std::move(definition));
     }
@@ -692,13 +692,13 @@ private:
                     {
                         throw std::runtime_error("Sequence flow '" + flow.id + "' value 'name' must be greater than zero.");
                     }
-                    flow.property_value.reset();
+                    flow.group_value.reset();
                     continue;
                 }
 
-                if (definition.gateway_criteria == GatewayCriteria::Property)
+                if (definition.gateway_criteria == GatewayCriteria::Group)
                 {
-                    flow.property_value = require_text(flow.name.c_str(), "name", "Sequence flow '" + flow.id + "'");
+                    flow.group_value = require_text(flow.name.c_str(), "name", "Sequence flow '" + flow.id + "'");
                     flow.weight.reset();
                 }
             }
@@ -813,11 +813,11 @@ private:
                             }
                         }
                     }
-                    if (definition.gateway_criteria == GatewayCriteria::Property)
+                    if (definition.gateway_criteria == GatewayCriteria::Group)
                     {
-                        if (!definition.gateway_property_name.has_value() || definition.gateway_property_name->empty())
+                        if (!definition.group.has_value() || definition.group->empty())
                         {
-                            throw std::runtime_error("Exclusive gateway '" + node_id + "' must define '_propertyName' when '_criteria=property'.");
+                            throw std::runtime_error("Exclusive gateway '" + node_id + "' must define '_group' when '_criteria=group'.");
                         }
 
                         std::unordered_set<std::string> property_values;
@@ -825,13 +825,13 @@ private:
                         for (const auto& flow_id : flow_ids->second)
                         {
                             const auto& flow = flow_by_id(flow_id);
-                            if (!flow.property_value.has_value() || flow.property_value->empty())
+                            if (!flow.group_value.has_value() || flow.group_value->empty())
                             {
                                 throw std::runtime_error("Sequence flow '" + flow.id + "' must define a non-empty property value in sequence flow name.");
                             }
-                            if (!property_values.insert(*flow.property_value).second)
+                            if (!property_values.insert(*flow.group_value).second)
                             {
-                                throw std::runtime_error("Exclusive gateway '" + node_id + "' has duplicate property branch name '" + *flow.property_value + "'.");
+                                throw std::runtime_error("Exclusive gateway '" + node_id + "' has duplicate property branch name '" + *flow.group_value + "'.");
                             }
                         }
                     }

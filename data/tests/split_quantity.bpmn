@@ -21,7 +21,7 @@
                     <camunda:property name="_oneOff" value="true" />
                     <camunda:property name="_distributionType" value="static" />
                     <camunda:property name="_staticInterval" value="1" />
-                    <camunda:property name="_quantityProperty" value="qty" />
+                    <camunda:property name="_quantity" value="qty" />
                 </camunda:properties>
             </bpmn:extensionElements>
             <bpmn:incoming>Flow_start_split</bpmn:incoming>
@@ -31,8 +31,8 @@
         <bpmn:exclusiveGateway id="Gateway_route" name="属性路由">
             <bpmn:extensionElements>
                 <camunda:properties>
-                    <camunda:property name="_criteria" value="property" />
-                    <camunda:property name="_propertyName" value="route" />
+                    <camunda:property name="_criteria" value="group" />
+                    <camunda:property name="_group" value="route" />
                 </camunda:properties>
             </bpmn:extensionElements>
             <bpmn:incoming>Flow_split_gateway</bpmn:incoming>

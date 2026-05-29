@@ -26,7 +26,6 @@ struct ResourceTimelineRow
     int in_use{0};
     int available{0};
     int queue_length{0};
-    std::string entity_id;
     std::string task_id;
 };
 

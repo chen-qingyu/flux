@@ -16,7 +16,6 @@ TEST_CASE("Any-resource strategy allocates one deterministic resource", "[runtim
     REQUIRE(result.reports.resource_timeline_rows.size() == 2);
     REQUIRE(result.reports.resource_timeline_rows[0].change_type == "allocate");
     REQUIRE(result.reports.resource_timeline_rows[0].resource_name == "柜员");
-    REQUIRE(result.reports.resource_timeline_rows[0].entity_id == "Event_start_ticket_0");
     REQUIRE(result.reports.resource_timeline_rows[0].task_id == "Task_service");
     REQUIRE(result.reports.resource_timeline_rows[1].change_type == "release");
     REQUIRE(result.reports.resource_timeline_rows[1].resource_name == "柜员");
@@ -37,8 +36,7 @@ TEST_CASE("All-resource strategy allocates every associated resource", "[runtime
     REQUIRE(result.reports.resource_timeline_rows[1].change_type == "allocate");
     REQUIRE(result.reports.resource_timeline_rows[0].time == 0.0);
     REQUIRE(result.reports.resource_timeline_rows[1].time == 0.0);
-    REQUIRE(result.reports.resource_timeline_rows[0].entity_id == "Event_start_case_0");
-    REQUIRE(result.reports.resource_timeline_rows[1].entity_id == "Event_start_case_0");
+
     REQUIRE(result.reports.resource_summary_rows.size() == 2);
     REQUIRE(result.reports.resource_summary_rows[0].allocation_count == 1);
     REQUIRE(result.reports.resource_summary_rows[1].allocation_count == 1);
@@ -50,9 +48,9 @@ TEST_CASE("FIFO queue starts entities in arrival order", "[runtime][fifo]")
 
     const auto task_starts = flux::test_support::select_events(result, "task_start");
     REQUIRE(task_starts.size() == 3);
-    REQUIRE(task_starts[0].entity_id == "Event_start_customer_0");
-    REQUIRE(task_starts[1].entity_id == "Event_start_customer_1");
-    REQUIRE(task_starts[2].entity_id == "Event_start_customer_2");
+    REQUIRE(task_starts[0].entity_id == "0");
+    REQUIRE(task_starts[1].entity_id == "1");
+    REQUIRE(task_starts[2].entity_id == "2");
 
     const auto task_arrivals = flux::test_support::select_events(result, "task_arrive");
     REQUIRE(task_arrivals.size() == 3);
@@ -74,10 +72,10 @@ TEST_CASE("External initiator generates entities from sorted csv times", "[runti
     REQUIRE(generated[1].time == 3.0);
     REQUIRE(generated[2].time == 3.0);
     REQUIRE(generated[3].time == 7.5);
-    REQUIRE(generated[0].entity_id == "Event_external_customer_0");
-    REQUIRE(generated[1].entity_id == "Event_external_customer_1");
-    REQUIRE(generated[2].entity_id == "Event_external_customer_2");
-    REQUIRE(generated[3].entity_id == "Event_external_customer_3");
+    REQUIRE(generated[0].entity_id == "0");
+    REQUIRE(generated[1].entity_id == "1");
+    REQUIRE(generated[2].entity_id == "2");
+    REQUIRE(generated[3].entity_id == "3");
 
     const auto task_arrivals = flux::test_support::select_events(result, "task_arrive");
     REQUIRE(task_arrivals.size() == 4);
@@ -98,10 +96,10 @@ TEST_CASE("Property splitter routes entities by external csv property", "[runtim
     REQUIRE(task_starts[2].node_id == "Task_put");
     REQUIRE(task_starts[3].node_id == "Task_get");
 
-    REQUIRE(task_starts[0].entity_id == "Event_property_case_0");
-    REQUIRE(task_starts[1].entity_id == "Event_property_case_1");
-    REQUIRE(task_starts[2].entity_id == "Event_property_case_2");
-    REQUIRE(task_starts[3].entity_id == "Event_property_case_3");
+    REQUIRE(task_starts[0].entity_id == "0");
+    REQUIRE(task_starts[1].entity_id == "1");
+    REQUIRE(task_starts[2].entity_id == "2");
+    REQUIRE(task_starts[3].entity_id == "3");
 }
 
 TEST_CASE("Split quantity duplicates entities by external csv count and keeps properties", "[runtime][split-quantity]")

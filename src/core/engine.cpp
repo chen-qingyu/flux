@@ -5,7 +5,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <deque>
-#include <functional>
 #include <limits>
 #include <memory>
 #include <queue>
@@ -33,7 +32,7 @@ enum class ScheduledEventType
 
 struct ProcessToken
 {
-    std::string entity_id;
+    std::size_t global_seq{0};
     std::string entity_type;
     double created_at{0.0};
     std::string entity_name;
@@ -345,7 +344,6 @@ public:
         const std::vector<std::string>& resource_ids,
         double time,
         double wait_time,
-        const std::string& entity_id,
         const std::string& task_id)
     {
         for (const auto& resource_id : resource_ids)
@@ -357,7 +355,7 @@ public:
             ++runtime.allocation_count;
             runtime.total_wait_time += wait_time;
             runtime.max_queue_length = std::max(runtime.max_queue_length, queue_length);
-            log_resource_timeline(result, time, runtime, "allocate", queue_length, entity_id, task_id);
+            log_resource_timeline(result, time, runtime, "allocate", queue_length, task_id);
         }
     }
 
@@ -366,7 +364,6 @@ public:
         Result& result,
         const std::vector<std::string>& resource_ids,
         double time,
-        const std::string& entity_id,
         const std::string& task_id)
     {
         for (const auto& resource_id : resource_ids)
@@ -376,7 +373,7 @@ public:
             update_busy_time(runtime, time);
             runtime.in_use = std::max(0, runtime.in_use - 1);
             runtime.max_queue_length = std::max(runtime.max_queue_length, queue_length);
-            log_resource_timeline(result, time, runtime, "release", queue_length, entity_id, task_id);
+            log_resource_timeline(result, time, runtime, "release", queue_length, task_id);
         }
     }
 
@@ -436,7 +433,6 @@ private:
         const ResourceRuntime& runtime,
         const std::string& change_type,
         int queue_length,
-        const std::string& entity_id,
         const std::string& task_id)
     {
         result.reports.resource_timeline_rows.push_back(ResourceTimelineRow{
@@ -447,7 +443,6 @@ private:
             runtime.in_use,
             runtime.capacity - runtime.in_use,
             queue_length,
-            entity_id,
             task_id,
         });
     }
@@ -893,21 +888,25 @@ private:
         return next_order_++;
     }
 
-    [[nodiscard]] std::string next_entity_id(const std::string& creator_node_id, const std::string& entity_type)
+    [[nodiscard]] std::size_t next_global_seq()
     {
-        const auto index = entity_type_sequences_[entity_type]++;
-        return creator_node_id + "_" + entity_type + "_" + std::to_string(index);
+        return next_global_seq_++;
+    }
+
+    [[nodiscard]] std::size_t next_type_seq(const std::string& entity_type)
+    {
+        return entity_type_sequences_[entity_type]++;
     }
 
     entt::entity create_token(
-        const std::string& entity_id,
+        std::size_t global_seq,
         const std::string& entity_type,
         double created_at,
         std::string entity_name,
         std::unordered_map<std::string, std::string> properties = {})
     {
         const auto entity = registry_.create();
-        registry_.emplace<ProcessToken>(entity, ProcessToken{entity_id, entity_type, created_at, std::move(entity_name), std::move(properties)});
+        registry_.emplace<ProcessToken>(entity, ProcessToken{global_seq, entity_type, created_at, std::move(entity_name), std::move(properties)});
         return entity;
     }
 
@@ -939,7 +938,7 @@ private:
     {
         result_.reports.event_rows.push_back(EventLogRow{
             time,
-            token_component.entity_id,
+            std::to_string(token_component.global_seq),
             token_component.entity_name,
             node.id,
             node.name,
@@ -947,9 +946,9 @@ private:
         });
     }
 
-    void apply_release(const std::vector<std::string>& resource_ids, double time, const std::string& entity_id, const std::string& task_id)
+    void apply_release(const std::vector<std::string>& resource_ids, double time, const std::string& task_id)
     {
-        resources_.apply_release(registry_, result_, resource_ids, time, entity_id, task_id);
+        resources_.apply_release(registry_, result_, resource_ids, time, task_id);
         for (const auto& resource_id : resource_ids)
         {
             pending_.rearm_resource_queues(resource_id);
@@ -966,7 +965,7 @@ private:
         const auto& token_component = token(token_entity);
         if (node.task->type != TaskType::ReleaseResource)
         {
-            resources_.apply_allocation(registry_, result_, allocation, time, wait_time, token_component.entity_id, node.id);
+            resources_.apply_allocation(registry_, result_, allocation, time, wait_time, node.id);
         }
         registry_.emplace_or_replace<ActiveTask>(token_entity, ActiveTask{node.id, allocation});
 
@@ -981,7 +980,7 @@ private:
     }
 
     [[nodiscard]] std::string select_exclusive_gateway_target(const NodeDefinition& node, entt::entity token_entity);
-    [[nodiscard]] std::vector<entt::entity> create_restored_tokens(const RestorableTokenSnapshot& snapshot, const std::string& restore_node_id);
+    [[nodiscard]] std::vector<entt::entity> create_restored_tokens(const RestorableTokenSnapshot& snapshot);
     [[nodiscard]] std::size_t advance_combine_outputs(const std::string& task_id, const std::string& group, std::size_t equivalent_units, double ratio);
     [[nodiscard]] std::size_t advance_split_outputs(const std::string& task_id, double ratio);
     [[nodiscard]] std::size_t read_positive_integer_property(const ProcessToken& token_component, const std::string& property_name, const std::string& context) const;
@@ -1001,6 +1000,7 @@ private:
     std::priority_queue<ScheduledEvent> queue_;
     double current_time_{0.0};
     std::uint64_t next_order_{0};
+    std::size_t next_global_seq_{0};
     std::unordered_map<std::string, std::size_t> entity_type_sequences_;
     std::unordered_map<CombineGroupKey, RatioProgress, CombineGroupKeyHash> combine_ratio_progress_;
     std::unordered_map<std::string, RatioProgress> split_ratio_progress_;
@@ -1151,21 +1151,16 @@ PendingTaskRequest Engine::PendingManager::take_front_request(const PendingQueue
     return request;
 }
 
-std::vector<entt::entity> Engine::RunState::create_restored_tokens(const RestorableTokenSnapshot& snapshot, const std::string& restore_node_id)
+std::vector<entt::entity> Engine::RunState::create_restored_tokens(const RestorableTokenSnapshot& snapshot)
 {
     std::vector<entt::entity> restored_tokens;
     restored_tokens.reserve(snapshot.restore_count);
 
-    const auto create_with_properties = [&](std::unordered_map<std::string, std::string> properties, const std::string& entity_id, const std::string& entity_name)
-    {
-        const auto restored = create_token(entity_id, snapshot.token.entity_type, snapshot.token.created_at, entity_name, std::move(properties));
-        tokens_.restore_snapshot_history(registry_, restored, snapshot.history);
-        restored_tokens.push_back(restored);
-    };
-
     if (!snapshot.quantity.has_value())
     {
-        create_with_properties(snapshot.token.properties, snapshot.token.entity_id, snapshot.token.entity_name);
+        const auto restored = create_token(snapshot.token.global_seq, snapshot.token.entity_type, snapshot.token.created_at, snapshot.token.entity_name, snapshot.token.properties);
+        tokens_.restore_snapshot_history(registry_, restored, snapshot.history);
+        restored_tokens.push_back(restored);
         if (!snapshot.held_resource_ids.empty())
         {
             registry_.emplace<HeldResources>(restored_tokens.back(), HeldResources{snapshot.held_resource_ids});
@@ -1177,8 +1172,9 @@ std::vector<entt::entity> Engine::RunState::create_restored_tokens(const Restora
     {
         auto properties = snapshot.token.properties;
         properties[*snapshot.quantity] = "1";
-        const auto entity_id = next_entity_id(restore_node_id, snapshot.token.entity_type);
-        create_with_properties(std::move(properties), entity_id, snapshot.token.entity_name);
+        const auto restored = create_token(next_global_seq(), snapshot.token.entity_type, snapshot.token.created_at, snapshot.token.entity_name, std::move(properties));
+        tokens_.restore_snapshot_history(registry_, restored, snapshot.history);
+        restored_tokens.push_back(restored);
         if (!snapshot.held_resource_ids.empty())
         {
             registry_.emplace<HeldResources>(restored_tokens.back(), HeldResources{snapshot.held_resource_ids});
@@ -1323,9 +1319,10 @@ void Engine::RunState::schedule_split_outputs(entt::entity token_entity, const N
         outputs.reserve(output_count);
         for (std::size_t index = 0; index < output_count; ++index)
         {
-            const auto entity_id = next_entity_id(node.id, node.task->split->entity_type);
-            const auto entity_name = node.name + "-" + node.task->split->entity_type + "-" + entity_id.substr(entity_id.rfind('_') + 1);
-            const auto child = create_token(entity_id, node.task->split->entity_type, start_time, entity_name);
+            const auto seq = next_global_seq();
+            const auto type_seq = next_type_seq(node.task->split->entity_type);
+            const auto entity_name = node.name + "-" + node.task->split->entity_type + "-" + std::to_string(type_seq);
+            const auto child = create_token(seq, node.task->split->entity_type, start_time, entity_name);
             outputs.push_back(child);
         }
     }
@@ -1337,9 +1334,10 @@ void Engine::RunState::schedule_split_outputs(entt::entity token_entity, const N
         outputs.reserve(output_count);
         for (std::size_t index = 0; index < output_count; ++index)
         {
-            const auto entity_id = next_entity_id(node.id, parent.entity_type);
-            const auto entity_name = node.name + "-" + parent.entity_type + "-" + entity_id.substr(entity_id.rfind('_') + 1);
-            const auto child = create_token(entity_id, parent.entity_type, start_time, entity_name, parent.properties);
+            const auto seq = next_global_seq();
+            const auto type_seq = next_type_seq(parent.entity_type);
+            const auto entity_name = node.name + "-" + parent.entity_type + "-" + std::to_string(type_seq);
+            const auto child = create_token(seq, parent.entity_type, start_time, entity_name, parent.properties);
             outputs.push_back(child);
         }
     }
@@ -1354,7 +1352,7 @@ void Engine::RunState::schedule_split_outputs(entt::entity token_entity, const N
         outputs.reserve(history.members.size());
         for (const auto& snapshot : history.members)
         {
-            auto restored = create_restored_tokens(snapshot, node.id);
+            auto restored = create_restored_tokens(snapshot);
             outputs.insert(outputs.end(), restored.begin(), restored.end());
         }
     }
@@ -1428,16 +1426,16 @@ void Engine::RunState::process_event(const ScheduledEvent& event)
 void Engine::RunState::handle_generate_entity(const ScheduledEvent& event)
 {
     const auto& start_node = flux::node(model_, event.node_id);
-    const auto entity_id = next_entity_id(start_node.id, start_node.generator->entity_type);
     std::unordered_map<std::string, std::string> properties;
     if (event.external_record_index.has_value())
     {
         properties = start_node.generator->external_records.at(*event.external_record_index).properties;
     }
 
-    const auto seq = entity_id.substr(entity_id.rfind('_') + 1);
-    const auto entity_name = start_node.name + "-" + start_node.generator->entity_type + "-" + seq;
-    const auto token_entity = create_token(entity_id, start_node.generator->entity_type, event.time, entity_name, std::move(properties));
+    const auto seq = next_global_seq();
+    const auto type_seq = next_type_seq(start_node.generator->entity_type);
+    const auto entity_name = start_node.name + "-" + start_node.generator->entity_type + "-" + std::to_string(type_seq);
+    const auto token_entity = create_token(seq, start_node.generator->entity_type, event.time, entity_name, std::move(properties));
     const auto token_component = token(token_entity);
     ++result_.generated_entities;
     log_event(event.time, token_component, start_node, "entity_generated");
@@ -1497,9 +1495,10 @@ void Engine::RunState::handle_arrive_node(const ScheduledEvent& event)
                     }
                 }
 
-                const auto entity_id = next_entity_id(node.id, combine.entity_type);
-                const auto batch_entity_name = node.name + "-" + combine.entity_type + "-" + entity_id.substr(entity_id.rfind('_') + 1);
-                const auto batch_token = create_token(entity_id, combine.entity_type, event.time, batch_entity_name);
+                const auto seq = next_global_seq();
+                const auto type_seq = next_type_seq(combine.entity_type);
+                const auto batch_entity_name = node.name + "-" + combine.entity_type + "-" + std::to_string(type_seq);
+                const auto batch_token = create_token(seq, combine.entity_type, event.time, batch_entity_name);
                 registry_.emplace<CombineBatch>(batch_token, CombineBatch{members});
                 tokens_.set_combine_history(registry_, batch_token, std::move(snapshots));
 
@@ -1549,7 +1548,7 @@ void Engine::RunState::handle_finish_task(const ScheduledEvent& event)
 
     if (task_type != TaskType::AcquireResource)
     {
-        apply_release(active_task.allocated_resources, event.time, token_component.entity_id, node.id);
+        apply_release(active_task.allocated_resources, event.time, node.id);
     }
 
     if (task_type == TaskType::Combine)
@@ -1604,7 +1603,7 @@ std::string Engine::RunState::select_exclusive_gateway_target(const NodeDefiniti
         const auto property = token_component.properties.find(*node.group);
         if (property == token_component.properties.end())
         {
-            throw std::runtime_error("Entity '" + token_component.entity_id + "' is missing gateway property '" + *node.group + "' for exclusive gateway '" + node.id + "'.");
+            throw std::runtime_error("Entity '" + token_component.entity_name + "' is missing gateway property '" + *node.group + "' for exclusive gateway '" + node.id + "'.");
         }
 
         const auto& flow_ids = model_.outgoing_flow_ids.at(node.id);
@@ -1617,7 +1616,7 @@ std::string Engine::RunState::select_exclusive_gateway_target(const NodeDefiniti
             }
         }
 
-        throw std::runtime_error("Entity '" + token_component.entity_id + "' does not match any outgoing flow for exclusive gateway '" + node.id + "'.");
+        throw std::runtime_error("Entity '" + token_component.entity_name + "' does not match any outgoing flow for exclusive gateway '" + node.id + "'.");
     }
 
     if (*node.gateway_criteria != GatewayCriteria::Weight)

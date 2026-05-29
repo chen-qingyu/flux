@@ -124,7 +124,7 @@ TEST_CASE("Split quantity duplicates entities by external csv count and keeps pr
     for (const auto& row : exits)
     {
         REQUIRE(row.node_id == "Event_end");
-        REQUIRE(row.entity_type == "order");
+        REQUIRE(row.entity_name.find("-order-") != std::string::npos);
     }
 }
 
@@ -248,22 +248,22 @@ TEST_CASE("Floating-point ratios work across combine delay split pipeline", "[ru
     {
         if (row.node_id == "Activity_combine")
         {
-            REQUIRE(row.entity_type == "box");
+            REQUIRE(row.entity_name.find("-box-") != std::string::npos);
         }
         if (row.node_id == "Activity_delay")
         {
-            REQUIRE(row.entity_type == "box");
+            REQUIRE(row.entity_name.find("-box-") != std::string::npos);
         }
         if (row.node_id == "Activity_split")
         {
-            REQUIRE(row.entity_type == "box");
+            REQUIRE(row.entity_name.find("-box-") != std::string::npos);
         }
     }
 
     for (const auto& row : exits)
     {
         REQUIRE(row.node_id == "Event_end");
-        REQUIRE(row.entity_type == "parcel");
+        REQUIRE(row.entity_name.find("-parcel-") != std::string::npos);
     }
 }
 
@@ -286,7 +286,7 @@ TEST_CASE("Quantity-aware combine restore expands consumed equivalent entities",
     for (const auto& row : exits)
     {
         REQUIRE(row.node_id == "Event_end");
-        REQUIRE(row.entity_type == "order");
+        REQUIRE(row.entity_name.find("-order-") != std::string::npos);
         REQUIRE(row.time == 3.0);
     }
 }
@@ -313,7 +313,7 @@ TEST_CASE("Group-ratio combine groups quantities independently", "[runtime][comb
     for (const auto& row : exits)
     {
         REQUIRE(row.node_id == "Event_end");
-        REQUIRE(row.entity_type == "order");
+        REQUIRE(row.entity_name.find("-order-") != std::string::npos);
     }
 }
 
@@ -354,7 +354,7 @@ TEST_CASE("Acquire-combine-restore-release preserves held resources through snap
     for (const auto& row : exits)
     {
         REQUIRE(row.node_id == "Event_end");
-        REQUIRE(row.entity_type == "item");
+        REQUIRE(row.entity_name.find("-item-") != std::string::npos);
     }
 
     // 资源 Worker 应有 10 次分配（acquire）和 10 次释放（release）

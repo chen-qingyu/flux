@@ -11,10 +11,9 @@ struct EventLogRow
 {
     double time{0.0};
     std::string entity_id;
-    std::string entity_type;
+    std::string entity_name;
     std::string node_id;
     std::string node_name;
-    std::string node_type;
     std::string event_type;
 };
 

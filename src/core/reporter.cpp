@@ -49,17 +49,16 @@ void Reporter::write_events(const std::filesystem::path& output_directory, const
     auto writer = csv::make_csv_writer_buffered(stream);
 
     writer << std::vector<std::string>{
-        "time", "entity_id", "entity_type", "node_id", "node_name", "node_type", "event_type"};
+        "time", "entity_id", "entity_name", "node_id", "node_name", "event_type"};
 
     for (const auto& row : bundle.event_rows)
     {
         writer << std::make_tuple(
             format_fixed(row.time, TIME_PRECISION),
             row.entity_id,
-            row.entity_type,
+            row.entity_name,
             row.node_id,
             row.node_name,
-            row.node_type,
             row.event_type);
     }
 }

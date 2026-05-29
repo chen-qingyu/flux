@@ -59,6 +59,7 @@ struct RestorableTokenSnapshot
     std::shared_ptr<CombineHistory> history;
     std::size_t restore_count{1};
     std::optional<std::string> quantity;
+    std::vector<std::string> held_resource_ids;
 };
 
 struct CombineHistory
@@ -532,7 +533,7 @@ public:
         std::size_t restore_count,
         const std::optional<std::string>& quantity) const
     {
-        return RestorableTokenSnapshot{registry.get<ProcessToken>(token_entity), snapshot_combine_history(registry, token_entity), restore_count, quantity};
+        return RestorableTokenSnapshot{registry.get<ProcessToken>(token_entity), snapshot_combine_history(registry, token_entity), restore_count, quantity, held_resources(registry, token_entity)};
     }
 
     void restore_snapshot_history(entt::registry& registry, entt::entity token_entity, const std::shared_ptr<CombineHistory>& history)
@@ -1166,6 +1167,10 @@ std::vector<entt::entity> Engine::RunState::create_restored_tokens(const Restora
     if (!snapshot.quantity.has_value())
     {
         create_with_properties(snapshot.token.properties, snapshot.token.entity_id, snapshot.token.token_id);
+        if (!snapshot.held_resource_ids.empty())
+        {
+            registry_.emplace<HeldResources>(restored_tokens.back(), HeldResources{snapshot.held_resource_ids});
+        }
         return restored_tokens;
     }
 
@@ -1175,6 +1180,10 @@ std::vector<entt::entity> Engine::RunState::create_restored_tokens(const Restora
         properties[*snapshot.quantity] = "1";
         const auto entity_id = next_entity_id(restore_node_id, snapshot.token.entity_type);
         create_with_properties(std::move(properties), entity_id, entity_id + ".t0");
+        if (!snapshot.held_resource_ids.empty())
+        {
+            registry_.emplace<HeldResources>(restored_tokens.back(), HeldResources{snapshot.held_resource_ids});
+        }
     }
 
     return restored_tokens;
@@ -1445,11 +1454,6 @@ void Engine::RunState::handle_arrive_node(const ScheduledEvent& event)
     if (node.type == NodeType::Task)
     {
         log_event(event.time, token_component, node, "task_arrive");
-
-        if ((node.task->type == TaskType::Combine || node.task->type == TaskType::Split) && tokens_.token_has_held_resources(registry_, event.token))
-        {
-            throw std::runtime_error("Task '" + node.id + "' does not support tokens that are holding resources.");
-        }
 
         if (node.task->type == TaskType::Combine)
         {

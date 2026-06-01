@@ -1,5 +1,6 @@
 #include "reporter.hpp"
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <stdexcept>
@@ -89,15 +90,18 @@ void Reporter::write_resource_summary(const std::filesystem::path& output_direct
 {
     auto stream = open_csv_file(csv_path(output_directory, "resource_summary", file_suffix));
     auto writer = csv::make_csv_writer_buffered(stream);
+    auto rows = bundle.resource_summary_rows;
+    std::stable_sort(rows.begin(), rows.end(), [](const auto& left, const auto& right)
+                     { return std::tie(left.resource_name, left.resource_id) < std::tie(right.resource_name, right.resource_id); });
 
     writer << std::vector<std::string>{
-        "resource_id", "resource_name", "capacity", "busy_time", "idle_time", "utilization", "max_queue_length", "average_wait_time", "allocation_count", "simulation_horizon"};
+        "resource_name", "resource_id", "capacity", "busy_time", "idle_time", "utilization", "max_queue_length", "average_wait_time", "allocation_count", "simulation_horizon"};
 
-    for (const auto& row : bundle.resource_summary_rows)
+    for (const auto& row : rows)
     {
         writer << std::make_tuple(
-            row.resource_id,
             row.resource_name,
+            row.resource_id,
             row.capacity,
             format_fixed(row.busy_time, TIME_PRECISION),
             format_fixed(row.idle_time, TIME_PRECISION),
@@ -109,6 +113,39 @@ void Reporter::write_resource_summary(const std::filesystem::path& output_direct
     }
 }
 
+void Reporter::write_activity_summary(const std::filesystem::path& output_directory, const ReportBundle& bundle, const std::string& file_suffix)
+{
+    auto stream = open_csv_file(csv_path(output_directory, "activity_summary", file_suffix));
+    auto writer = csv::make_csv_writer_buffered(stream);
+    auto rows = bundle.activity_summary_rows;
+    std::stable_sort(rows.begin(), rows.end(), [](const auto& left, const auto& right)
+                     { return std::tie(left.activity_name, left.activity_id) < std::tie(right.activity_name, right.activity_id); });
+
+    writer << std::vector<std::string>{
+        "activity_name", "activity_id", "arrival_count", "start_count", "busy_time", "busy_rate",
+        "queue_total_time", "queue_average_time", "queue_max_time", "queue_min_time",
+        "process_total_time", "process_average_time", "process_max_time", "process_min_time"};
+
+    for (const auto& row : rows)
+    {
+        writer << std::make_tuple(
+            row.activity_name,
+            row.activity_id,
+            row.arrival_count,
+            row.start_count,
+            format_fixed(row.busy_time, TIME_PRECISION),
+            format_fixed(row.busy_rate, RATIO_PRECISION),
+            format_fixed(row.queue_total_time, TIME_PRECISION),
+            format_fixed(row.queue_average_time, TIME_PRECISION),
+            format_fixed(row.queue_max_time, TIME_PRECISION),
+            format_fixed(row.queue_min_time, TIME_PRECISION),
+            format_fixed(row.process_total_time, TIME_PRECISION),
+            format_fixed(row.process_average_time, TIME_PRECISION),
+            format_fixed(row.process_max_time, TIME_PRECISION),
+            format_fixed(row.process_min_time, TIME_PRECISION));
+    }
+}
+
 void Reporter::report(const std::filesystem::path& output_directory, const ReportBundle& bundle, const std::string& file_suffix)
 {
     std::filesystem::create_directories(output_directory);
@@ -116,6 +153,7 @@ void Reporter::report(const std::filesystem::path& output_directory, const Repor
     write_events(output_directory, bundle, file_suffix);
     write_resource_timeline(output_directory, bundle, file_suffix);
     write_resource_summary(output_directory, bundle, file_suffix);
+    write_activity_summary(output_directory, bundle, file_suffix);
 }
 
 } // namespace flux

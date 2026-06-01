@@ -43,6 +43,7 @@ struct ActiveTask
 {
     std::string task_id;
     std::vector<std::string> allocated_resources;
+    double start_time{0.0};
 };
 
 struct HeldResources
@@ -124,6 +125,49 @@ struct ResourceRuntime
     int max_queue_length{0};
     double total_wait_time{0.0};
     std::size_t allocation_count{0};
+};
+
+struct ActivityRuntime
+{
+    struct SampleStats
+    {
+        std::size_t count{0};
+        double total_time{0.0};
+        double max_time{0.0};
+        double min_time{std::numeric_limits<double>::infinity()};
+
+        void note_sample(double duration)
+        {
+            ++count;
+            total_time += duration;
+            max_time = std::max(max_time, duration);
+            min_time = std::min(min_time, duration);
+        }
+
+        [[nodiscard]] double average_time() const
+        {
+            return count > 0 ? total_time / static_cast<double>(count) : 0.0;
+        }
+
+        [[nodiscard]] double max_or_zero() const
+        {
+            return count > 0 ? max_time : 0.0;
+        }
+
+        [[nodiscard]] double min_or_zero() const
+        {
+            return count > 0 ? min_time : 0.0;
+        }
+    };
+
+    std::string activity_id;
+    std::string activity_name;
+    std::size_t entity_count{0};
+    double busy_time{0.0};
+    double last_busy_start_time{0.0};
+    std::size_t active_count{0};
+    SampleStats queue_stats;
+    SampleStats process_stats;
 };
 
 struct PendingTaskRequest
@@ -820,6 +864,7 @@ public:
         , pending_(model)
     {
         resources_.initialize(registry_);
+        initialize_activity_runtimes();
     }
 
     [[nodiscard]] bool has_events() const
@@ -869,6 +914,7 @@ public:
     void finalize()
     {
         resources_.finalize(registry_, result_);
+        finalize_activity_runtimes();
     }
 
     void schedule_start_events();
@@ -920,6 +966,59 @@ private:
         return registry_.get<ProcessToken>(entity);
     }
 
+    void initialize_activity_runtimes()
+    {
+        for (const auto& [node_id, node] : model_.nodes)
+        {
+            if (node.type != NodeType::Task)
+            {
+                continue;
+            }
+
+            activity_ids_.push_back(node_id);
+        }
+
+        std::sort(activity_ids_.begin(), activity_ids_.end());
+        for (const auto& activity_id : activity_ids_)
+        {
+            const auto& node = flux::node(model_, activity_id);
+            activity_runtimes_.insert_or_assign(activity_id, ActivityRuntime{node.id, node.name});
+        }
+    }
+
+    void finalize_activity_runtimes()
+    {
+        const auto horizon = result_.simulation_horizon;
+        for (const auto& activity_id : activity_ids_)
+        {
+            auto& runtime = activity_runtimes_.at(activity_id);
+            auto busy_time = runtime.busy_time;
+            if (runtime.active_count > 0)
+            {
+                busy_time += std::max(0.0, horizon - runtime.last_busy_start_time);
+            }
+
+            const auto busy_rate = horizon > 0.0 ? busy_time / horizon : 0.0;
+
+            result_.reports.activity_summary_rows.push_back(ActivitySummaryRow{
+                runtime.activity_id,
+                runtime.activity_name,
+                runtime.entity_count,
+                runtime.queue_stats.count,
+                busy_time,
+                busy_rate,
+                runtime.queue_stats.total_time,
+                runtime.queue_stats.average_time(),
+                runtime.queue_stats.max_or_zero(),
+                runtime.queue_stats.min_or_zero(),
+                runtime.process_stats.total_time,
+                runtime.process_stats.average_time(),
+                runtime.process_stats.max_or_zero(),
+                runtime.process_stats.min_or_zero(),
+            });
+        }
+    }
+
     void schedule_token_to_outgoing(const std::string& node_id, entt::entity token_entity, double time)
     {
         const auto& target_id = model_.outgoing.at(node_id).front();
@@ -967,7 +1066,14 @@ private:
         {
             resources_.apply_allocation(registry_, result_, allocation, time, wait_time, node.id);
         }
-        registry_.emplace_or_replace<ActiveTask>(token_entity, ActiveTask{node.id, allocation});
+        auto& activity = activity_runtimes_.at(node.id);
+        activity.queue_stats.note_sample(wait_time);
+        if (activity.active_count == 0)
+        {
+            activity.last_busy_start_time = time;
+        }
+        ++activity.active_count;
+        registry_.emplace_or_replace<ActiveTask>(token_entity, ActiveTask{node.id, allocation, time});
 
         const auto duration = sampler_.sample(node.task->duration_distribution);
         log_event(time, token_component, node, "task_start");
@@ -1004,6 +1110,8 @@ private:
     std::unordered_map<std::string, std::size_t> entity_type_sequences_;
     std::unordered_map<CombineGroupKey, RatioProgress, CombineGroupKeyHash> combine_ratio_progress_;
     std::unordered_map<std::string, RatioProgress> split_ratio_progress_;
+    std::unordered_map<std::string, ActivityRuntime> activity_runtimes_;
+    std::vector<std::string> activity_ids_;
 };
 
 void Engine::PendingManager::enqueue_request(PendingTaskRequest request, entt::registry& registry, ResourceManager& resources)
@@ -1300,7 +1408,6 @@ void Engine::RunState::start_or_enqueue_task(entt::entity token_entity, const No
             return;
         }
     }
-
     pending_.enqueue_request(PendingTaskRequest{next_order(), token_entity, node.id, time}, registry_, resources_);
     log_event(time, token(token_entity), node, "task_waiting_for_resources");
 }
@@ -1454,6 +1561,7 @@ void Engine::RunState::handle_arrive_node(const ScheduledEvent& event)
 
     if (node.type == NodeType::Task)
     {
+        ++activity_runtimes_.at(node.id).entity_count;
         log_event(event.time, token_component, node, "task_arrive");
 
         if (node.task->type == TaskType::Combine)
@@ -1545,6 +1653,21 @@ void Engine::RunState::handle_finish_task(const ScheduledEvent& event)
     const auto token_component = token(event.token);
     const auto active_task = registry_.get<ActiveTask>(event.token);
     const auto task_type = node.task->type;
+
+    auto& activity = activity_runtimes_.at(node.id);
+    const auto process_time = std::max(0.0, event.time - active_task.start_time);
+    activity.process_stats.note_sample(process_time);
+
+    if (activity.active_count == 0)
+    {
+        throw std::runtime_error("Activity '" + node.id + "' reached an invalid active state.");
+    }
+
+    --activity.active_count;
+    if (activity.active_count == 0)
+    {
+        activity.busy_time += std::max(0.0, event.time - activity.last_busy_start_time);
+    }
 
     if (task_type != TaskType::AcquireResource)
     {

@@ -43,11 +43,30 @@ struct ResourceSummaryRow
     double simulation_horizon{0.0};
 };
 
+struct ActivitySummaryRow
+{
+    std::string activity_id;
+    std::string activity_name;
+    std::size_t arrival_count{0};
+    std::size_t start_count{0};
+    double busy_time{0.0};
+    double busy_rate{0.0};
+    double queue_total_time{0.0};
+    double queue_average_time{0.0};
+    double queue_max_time{0.0};
+    double queue_min_time{0.0};
+    double process_total_time{0.0};
+    double process_average_time{0.0};
+    double process_max_time{0.0};
+    double process_min_time{0.0};
+};
+
 struct ReportBundle
 {
     std::vector<EventLogRow> event_rows;
     std::vector<ResourceTimelineRow> resource_timeline_rows;
     std::vector<ResourceSummaryRow> resource_summary_rows;
+    std::vector<ActivitySummaryRow> activity_summary_rows;
 };
 
 class Reporter
@@ -59,6 +78,7 @@ private:
     static void write_events(const std::filesystem::path& output_directory, const ReportBundle& bundle, const std::string& file_suffix);
     static void write_resource_timeline(const std::filesystem::path& output_directory, const ReportBundle& bundle, const std::string& file_suffix);
     static void write_resource_summary(const std::filesystem::path& output_directory, const ReportBundle& bundle, const std::string& file_suffix);
+    static void write_activity_summary(const std::filesystem::path& output_directory, const ReportBundle& bundle, const std::string& file_suffix);
 };
 
 } // namespace flux

@@ -1,0 +1,2 @@
+activity_name,activity_id,arrival_count,start_count,busy_time,busy_rate,queue_total_time,queue_average_time,queue_max_time,queue_min_time,process_total_time,process_average_time,process_max_time,process_min_time
+全部资源服务,Task_service,1,1,4.00,1.0000,0.00,0.00,0.00,0.00,4.00,4.00,4.00,4.00

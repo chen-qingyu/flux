@@ -1,0 +1,13 @@
+activity_name,activity_id,arrival_count,start_count,busy_time,busy_rate,queue_total_time,queue_average_time,queue_max_time,queue_min_time,process_total_time,process_average_time,process_max_time,process_min_time
+占用J1任务,Task_hold_joint_j1,1,1,4.00,0.5714,0.00,0.00,0.00,0.00,4.00,4.00,4.00,4.00
+占用J2任务,Task_hold_joint_j2,1,1,4.00,0.5714,0.00,0.00,0.00,0.00,4.00,4.00,4.00,4.00
+占用P1任务,Task_hold_partial_r1,1,1,4.00,0.5714,0.00,0.00,0.00,0.00,4.00,4.00,4.00,4.00
+占用P2任务,Task_hold_partial_r2,1,1,6.00,0.8571,0.00,0.00,0.00,0.00,6.00,6.00,6.00,6.00
+只需要J1任务,Task_need_joint_j1,1,1,1.00,0.1429,3.00,3.00,3.00,3.00,1.00,1.00,1.00,1.00
+只需要P1任务,Task_need_partial_p1,1,1,1.00,0.1429,2.00,2.00,2.00,2.00,1.00,1.00,1.00,1.00
+延迟到达J1任务,Task_delay_joint_j1,1,1,2.00,0.2857,0.00,0.00,0.00,0.00,2.00,2.00,2.00,2.00
+延迟到达P1任务,Task_delay_partial_p1,1,1,2.00,0.2857,0.00,0.00,0.00,0.00,2.00,2.00,2.00,2.00
+延迟到达全部J资源任务,Task_delay_joint_all,1,1,1.00,0.1429,0.00,0.00,0.00,0.00,1.00,1.00,1.00,1.00
+延迟到达全部资源任务,Task_delay_partial_all,1,1,1.00,0.1429,0.00,0.00,0.00,0.00,1.00,1.00,1.00,1.00
+需要J1和J2任务,Task_need_joint_all,1,1,1.00,0.1429,3.00,3.00,3.00,3.00,1.00,1.00,1.00,1.00
+需要P1和P2任务,Task_need_partial_all,1,1,1.00,0.1429,5.00,5.00,5.00,5.00,1.00,1.00,1.00,1.00

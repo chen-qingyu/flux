@@ -26,3 +26,7 @@
 | `process_average_time` | double  | 所有已完成实体的平均处理时间         |
 | `process_max_time`     | double  | 所有已完成实体的最大处理时间         |
 | `process_min_time`     | double  | 所有已完成实体的最小处理时间         |
+
+### 说明
+
+- `arrival_count - start_count` 为仿真结束时仍在等待资源而未启动的实体数；对于 combine 活动，`arrival_count` 为到达等效实体数，`start_count` 为合并后产生的实体数。

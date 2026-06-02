@@ -1561,7 +1561,7 @@ void Engine::RunState::handle_arrive_node(const ScheduledEvent& event)
 
     if (node.type == NodeType::Task)
     {
-        ++activity_runtimes_.at(node.id).entity_count;
+        activity_runtimes_.at(node.id).entity_count += node.task->type == TaskType::Combine ? combine_equivalent_units(node, event.token) : 1;
         log_event(event.time, token_component, node, "task_arrive");
 
         if (node.task->type == TaskType::Combine)

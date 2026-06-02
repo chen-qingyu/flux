@@ -41,7 +41,6 @@ struct ResourceSummaryRow
     int max_queue_length{0};
     double average_wait_time{0.0};
     std::size_t allocation_count{0};
-    double simulation_horizon{0.0};
 };
 
 struct TaskTimelineRow

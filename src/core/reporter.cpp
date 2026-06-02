@@ -96,7 +96,7 @@ void Reporter::write_resource_summary(const std::filesystem::path& output_direct
                      { return std::tie(left.resource_name, left.resource_id) < std::tie(right.resource_name, right.resource_id); });
 
     writer << std::vector<std::string>{
-        "resource_name", "resource_id", "capacity", "busy_time", "idle_time", "utilization", "max_queue_length", "average_wait_time", "allocation_count", "simulation_horizon"};
+        "resource_name", "resource_id", "capacity", "busy_time", "idle_time", "utilization", "max_queue_length", "average_wait_time", "allocation_count"};
 
     for (const auto& row : rows)
     {
@@ -109,8 +109,7 @@ void Reporter::write_resource_summary(const std::filesystem::path& output_direct
             format_fixed(row.utilization, RATIO_PRECISION),
             row.max_queue_length,
             format_fixed(row.average_wait_time, TIME_PRECISION),
-            row.allocation_count,
-            format_fixed(row.simulation_horizon, TIME_PRECISION));
+            row.allocation_count);
     }
 }
 

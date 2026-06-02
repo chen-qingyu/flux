@@ -1,4 +1,4 @@
-activity_name,activity_id,arrival_count,start_count,busy_time,busy_rate,queue_total_time,queue_average_time,queue_max_time,queue_min_time,process_total_time,process_average_time,process_max_time,process_min_time
+task_name,task_id,arrival_count,start_count,busy_time,busy_rate,queue_total_time,queue_average_time,queue_max_time,queue_min_time,process_total_time,process_average_time,process_max_time,process_min_time
 占用J1任务,Task_hold_joint_j1,1,1,4.00,0.5714,0.00,0.00,0.00,0.00,4.00,4.00,4.00,4.00
 占用J2任务,Task_hold_joint_j2,1,1,4.00,0.5714,0.00,0.00,0.00,0.00,4.00,4.00,4.00,4.00
 占用P1任务,Task_hold_partial_r1,1,1,4.00,0.5714,0.00,0.00,0.00,0.00,4.00,4.00,4.00,4.00

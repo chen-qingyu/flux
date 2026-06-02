@@ -44,10 +44,10 @@ struct ResourceSummaryRow
     double simulation_horizon{0.0};
 };
 
-struct ActivitySummaryRow
+struct TaskSummaryRow
 {
-    std::string activity_id;
-    std::string activity_name;
+    std::string task_id;
+    std::string task_name;
     std::size_t arrival_count{0};
     std::size_t start_count{0};
     double busy_time{0.0};
@@ -67,7 +67,7 @@ struct ReportBundle
     std::vector<EventLogRow> event_rows;
     std::vector<ResourceTimelineRow> resource_timeline_rows;
     std::vector<ResourceSummaryRow> resource_summary_rows;
-    std::vector<ActivitySummaryRow> activity_summary_rows;
+    std::vector<TaskSummaryRow> task_summary_rows;
 };
 
 class Reporter
@@ -79,7 +79,7 @@ private:
     static void write_entity_events(const std::filesystem::path& output_directory, const ReportBundle& bundle, const std::string& file_suffix);
     static void write_resource_timeline(const std::filesystem::path& output_directory, const ReportBundle& bundle, const std::string& file_suffix);
     static void write_resource_summary(const std::filesystem::path& output_directory, const ReportBundle& bundle, const std::string& file_suffix);
-    static void write_activity_summary(const std::filesystem::path& output_directory, const ReportBundle& bundle, const std::string& file_suffix);
+    static void write_task_summary(const std::filesystem::path& output_directory, const ReportBundle& bundle, const std::string& file_suffix);
 };
 
 } // namespace flux

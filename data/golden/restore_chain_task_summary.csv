@@ -1,4 +1,4 @@
-activity_name,activity_id,arrival_count,start_count,busy_time,busy_rate,queue_total_time,queue_average_time,queue_max_time,queue_min_time,process_total_time,process_average_time,process_max_time,process_min_time
+task_name,task_id,arrival_count,start_count,busy_time,busy_rate,queue_total_time,queue_average_time,queue_max_time,queue_min_time,process_total_time,process_average_time,process_max_time,process_min_time
 内层合并,Activity_combine_inner,4,2,0.00,0.0000,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
 内层还原,Activity_restore_inner,2,2,0.00,0.0000,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
 外层合并,Activity_combine_outer,2,1,0.00,0.0000,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00

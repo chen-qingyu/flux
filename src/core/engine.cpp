@@ -127,7 +127,7 @@ struct ResourceRuntime
     std::size_t allocation_count{0};
 };
 
-struct ActivityRuntime
+struct TaskRuntime
 {
     struct SampleStats
     {
@@ -160,8 +160,8 @@ struct ActivityRuntime
         }
     };
 
-    std::string activity_id;
-    std::string activity_name;
+    std::string task_id;
+    std::string task_name;
     std::size_t entity_count{0};
     double busy_time{0.0};
     double last_busy_start_time{0.0};
@@ -867,7 +867,7 @@ public:
         , pending_(model)
     {
         resources_.initialize(registry_);
-        initialize_activity_runtimes();
+        initialize_task_runtimes();
     }
 
     [[nodiscard]] bool has_events() const
@@ -917,7 +917,7 @@ public:
     void finalize()
     {
         resources_.finalize(registry_, result_);
-        finalize_activity_runtimes();
+        finalize_task_runtimes();
     }
 
     void schedule_start_events();
@@ -969,7 +969,7 @@ private:
         return registry_.get<ProcessToken>(entity);
     }
 
-    void initialize_activity_runtimes()
+    void initialize_task_runtimes()
     {
         for (const auto& [node_id, node] : model_.nodes)
         {
@@ -978,23 +978,23 @@ private:
                 continue;
             }
 
-            activity_ids_.push_back(node_id);
+            task_ids_.push_back(node_id);
         }
 
-        std::sort(activity_ids_.begin(), activity_ids_.end());
-        for (const auto& activity_id : activity_ids_)
+        std::sort(task_ids_.begin(), task_ids_.end());
+        for (const auto& task_id : task_ids_)
         {
-            const auto& node = flux::node(model_, activity_id);
-            activity_runtimes_.insert_or_assign(activity_id, ActivityRuntime{node.id, node.name});
+            const auto& node = flux::node(model_, task_id);
+            task_runtimes_.insert_or_assign(task_id, TaskRuntime{node.id, node.name});
         }
     }
 
-    void finalize_activity_runtimes()
+    void finalize_task_runtimes()
     {
         const auto horizon = result_.simulation_horizon;
-        for (const auto& activity_id : activity_ids_)
+        for (const auto& task_id : task_ids_)
         {
-            auto& runtime = activity_runtimes_.at(activity_id);
+            auto& runtime = task_runtimes_.at(task_id);
             auto busy_time = runtime.busy_time;
             if (runtime.active_count > 0)
             {
@@ -1003,9 +1003,9 @@ private:
 
             const auto busy_rate = horizon > 0.0 ? busy_time / horizon : 0.0;
 
-            result_.reports.activity_summary_rows.push_back(ActivitySummaryRow{
-                runtime.activity_id,
-                runtime.activity_name,
+            result_.reports.task_summary_rows.push_back(TaskSummaryRow{
+                runtime.task_id,
+                runtime.task_name,
                 runtime.entity_count,
                 runtime.queue_stats.count,
                 busy_time,
@@ -1069,13 +1069,13 @@ private:
         {
             resources_.apply_allocation(registry_, result_, allocation, time, wait_time, node.id);
         }
-        auto& activity = activity_runtimes_.at(node.id);
-        activity.queue_stats.note_sample(wait_time);
-        if (activity.active_count == 0)
+        auto& task = task_runtimes_.at(node.id);
+        task.queue_stats.note_sample(wait_time);
+        if (task.active_count == 0)
         {
-            activity.last_busy_start_time = time;
+            task.last_busy_start_time = time;
         }
-        ++activity.active_count;
+        ++task.active_count;
         registry_.emplace_or_replace<ActiveTask>(token_entity, ActiveTask{node.id, allocation, time});
 
         const auto duration = sampler_.sample(node.task->duration_distribution);
@@ -1113,8 +1113,8 @@ private:
     std::unordered_map<std::string, std::size_t> entity_type_sequences_;
     std::unordered_map<CombineGroupKey, RatioProgress, CombineGroupKeyHash> combine_ratio_progress_;
     std::unordered_map<std::string, RatioProgress> split_ratio_progress_;
-    std::unordered_map<std::string, ActivityRuntime> activity_runtimes_;
-    std::vector<std::string> activity_ids_;
+    std::unordered_map<std::string, TaskRuntime> task_runtimes_;
+    std::vector<std::string> task_ids_;
 };
 
 void Engine::PendingManager::enqueue_request(PendingTaskRequest request, entt::registry& registry, ResourceManager& resources, Result& result)
@@ -1564,7 +1564,7 @@ void Engine::RunState::handle_arrive_node(const ScheduledEvent& event)
 
     if (node.type == NodeType::Task)
     {
-        activity_runtimes_.at(node.id).entity_count += node.task->type == TaskType::Combine ? combine_equivalent_units(node, event.token) : 1;
+        task_runtimes_.at(node.id).entity_count += node.task->type == TaskType::Combine ? combine_equivalent_units(node, event.token) : 1;
         log_event(event.time, token_component, node, "task_arrive");
 
         if (node.task->type == TaskType::Combine)
@@ -1657,19 +1657,19 @@ void Engine::RunState::handle_finish_task(const ScheduledEvent& event)
     const auto active_task = registry_.get<ActiveTask>(event.token);
     const auto task_type = node.task->type;
 
-    auto& activity = activity_runtimes_.at(node.id);
+    auto& task = task_runtimes_.at(node.id);
     const auto process_time = std::max(0.0, event.time - active_task.start_time);
-    activity.process_stats.note_sample(process_time);
+    task.process_stats.note_sample(process_time);
 
-    if (activity.active_count == 0)
+    if (task.active_count == 0)
     {
-        throw std::runtime_error("Activity '" + node.id + "' reached an invalid active state.");
+        throw std::runtime_error("Task '" + node.id + "' reached an invalid active state.");
     }
 
-    --activity.active_count;
-    if (activity.active_count == 0)
+    --task.active_count;
+    if (task.active_count == 0)
     {
-        activity.busy_time += std::max(0.0, event.time - activity.last_busy_start_time);
+        task.busy_time += std::max(0.0, event.time - task.last_busy_start_time);
     }
 
     if (task_type != TaskType::AcquireResource)

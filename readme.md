@@ -108,7 +108,7 @@ python run.py data/demo.bpmn --seed 42
 - `entity_events`：实体事件日志
 - `resource_timeline`：资源占用时间线
 - `resource_summary`：资源利用率和等待统计
-- `activity_summary`：活动级统计
+- `task_summary`：活动级统计
 
 各报表的详细定义见 [docs/output.md](docs/output.md)。
 

@@ -1,0 +1,3 @@
+task_name,task_id,arrival_count,start_count,busy_time,busy_rate,queue_total_time,queue_average_time,queue_max_time,queue_min_time,process_total_time,process_average_time,process_max_time,process_min_time
+合并活动,Activity_combine,4,1,10.00,0.4348,0.00,0.00,0.00,0.00,10.00,10.00,10.00,10.00
+拆分活动,Activity_split,1,1,10.00,0.4348,0.00,0.00,0.00,0.00,10.00,10.00,10.00,10.00

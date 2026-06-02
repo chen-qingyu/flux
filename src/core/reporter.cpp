@@ -114,24 +114,24 @@ void Reporter::write_resource_summary(const std::filesystem::path& output_direct
     }
 }
 
-void Reporter::write_activity_summary(const std::filesystem::path& output_directory, const ReportBundle& bundle, const std::string& file_suffix)
+void Reporter::write_task_summary(const std::filesystem::path& output_directory, const ReportBundle& bundle, const std::string& file_suffix)
 {
-    auto stream = open_csv_file(csv_path(output_directory, "activity_summary", file_suffix));
+    auto stream = open_csv_file(csv_path(output_directory, "task_summary", file_suffix));
     auto writer = csv::make_csv_writer_buffered(stream);
-    auto rows = bundle.activity_summary_rows;
+    auto rows = bundle.task_summary_rows;
     std::stable_sort(rows.begin(), rows.end(), [](const auto& left, const auto& right)
-                     { return std::tie(left.activity_name, left.activity_id) < std::tie(right.activity_name, right.activity_id); });
+                     { return std::tie(left.task_name, left.task_id) < std::tie(right.task_name, right.task_id); });
 
     writer << std::vector<std::string>{
-        "activity_name", "activity_id", "arrival_count", "start_count", "busy_time", "busy_rate",
+        "task_name", "task_id", "arrival_count", "start_count", "busy_time", "busy_rate",
         "queue_total_time", "queue_average_time", "queue_max_time", "queue_min_time",
         "process_total_time", "process_average_time", "process_max_time", "process_min_time"};
 
     for (const auto& row : rows)
     {
         writer << std::make_tuple(
-            row.activity_name,
-            row.activity_id,
+            row.task_name,
+            row.task_id,
             row.arrival_count,
             row.start_count,
             format_fixed(row.busy_time, TIME_PRECISION),
@@ -154,7 +154,7 @@ void Reporter::report(const std::filesystem::path& output_directory, const Repor
     write_entity_events(output_directory, bundle, file_suffix);
     write_resource_timeline(output_directory, bundle, file_suffix);
     write_resource_summary(output_directory, bundle, file_suffix);
-    write_activity_summary(output_directory, bundle, file_suffix);
+    write_task_summary(output_directory, bundle, file_suffix);
 }
 
 } // namespace flux

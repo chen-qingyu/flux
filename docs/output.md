@@ -35,22 +35,22 @@
 
 ### 说明
 
-事件日志覆盖所有节点类型（开始事件、任务、网关、结束事件），因此使用 `node_id` / `node_name` 而非 `activity_*`。`activity_summary` 仅包含任务节点，故使用 `activity_*`。
+事件日志覆盖所有节点类型（开始事件、任务、网关、结束事件），因此使用 `node_id` / `node_name` 而非 `task_*`。`task_summary` 仅包含任务节点，故使用 `task_*`。
 
-## activity_summary
+## task_summary
 
 任务级活动统计，每个任务一行。
 
 ### 排序规则
 
-按 `(activity_name, activity_id)` 升序稳定排序。
+按 `(task_name, task_id)` 升序稳定排序。
 
 ### 列定义
 
 | 列名                   | 类型    | 说明                                 |
 | ---------------------- | ------- | ------------------------------------ |
-| `activity_name`        | string  | 活动名称，取自 `<task name="...">`   |
-| `activity_id`          | string  | 活动 ID，取自 `<task id="...">`      |
+| `task_name`            | string  | 任务名称，取自 `<task name="...">`   |
+| `task_id`              | string  | 任务 ID，取自 `<task id="...">`      |
 | `arrival_count`        | integer | 到达该活动的实体总数                 |
 | `start_count`          | integer | 启动执行的实体数（<= arrival_count） |
 | `busy_time`            | double  | 活动忙碌时长（时间段并集）           |

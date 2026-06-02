@@ -91,3 +91,43 @@
 | 实体开始执行（从等待队列来）     |    -1     |    +1     |      —      |
 | 实体不等待直接开始执行           |     —     |    +1     |      —      |
 | 实体完成执行                     |     —     |    -1     |     +1      |
+
+## resource_timeline
+
+资源状态时间线，记录每次资源分配、释放与排队事件。
+
+### 列定义
+
+| 列名            | 类型    | 说明                                                     |
+| --------------- | ------- | -------------------------------------------------------- |
+| `time`          | double  | 事件发生时间                                             |
+| `resource_id`   | string  | 资源 ID                                                  |
+| `resource_name` | string  | 资源名称                                                 |
+| `change_type`   | string  | 变化类型：`acquire` 分配、`release` 释放、`enqueue` 排队 |
+| `in_use`        | integer | 事件发生后该资源的占用数                                 |
+| `available`     | integer | 事件发生后该资源的可用数（容量 - in_use）                |
+| `queue_length`  | integer | 事件发生时该资源的等待队列长度                           |
+| `task_id`       | string  | 触发事件的任务 ID                                        |
+| `task_name`     | string  | 触发事件的任务名称                                       |
+
+## resource_summary
+
+资源利用率和等待统计汇总。
+
+### 排序规则
+
+按 `(resource_name, resource_id)` 升序稳定排序。
+
+### 列定义
+
+| 列名                | 类型    | 说明                       |
+| ------------------- | ------- | -------------------------- |
+| `resource_name`     | string  | 资源名称                   |
+| `resource_id`       | string  | 资源 ID                    |
+| `capacity`          | integer | 资源容量                   |
+| `busy_time`         | double  | 资源忙碌时长（时间段并集） |
+| `idle_time`         | double  | 资源空闲时长               |
+| `utilization`       | double  | 资源利用率                 |
+| `max_queue_length`  | integer | 最大等待队列长度           |
+| `average_wait_time` | double  | 平均等待时间               |
+| `allocation_count`  | integer | 资源被分配的总次数         |

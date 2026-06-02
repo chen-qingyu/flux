@@ -44,9 +44,9 @@ std::filesystem::path csv_path(const std::filesystem::path& output_directory, co
 
 } // namespace
 
-void Reporter::write_events(const std::filesystem::path& output_directory, const ReportBundle& bundle, const std::string& file_suffix)
+void Reporter::write_entity_events(const std::filesystem::path& output_directory, const ReportBundle& bundle, const std::string& file_suffix)
 {
-    auto stream = open_csv_file(csv_path(output_directory, "events", file_suffix));
+    auto stream = open_csv_file(csv_path(output_directory, "entity_events", file_suffix));
     auto writer = csv::make_csv_writer_buffered(stream);
 
     writer << std::vector<std::string>{
@@ -150,7 +150,7 @@ void Reporter::report(const std::filesystem::path& output_directory, const Repor
 {
     std::filesystem::create_directories(output_directory);
 
-    write_events(output_directory, bundle, file_suffix);
+    write_entity_events(output_directory, bundle, file_suffix);
     write_resource_timeline(output_directory, bundle, file_suffix);
     write_resource_summary(output_directory, bundle, file_suffix);
     write_activity_summary(output_directory, bundle, file_suffix);

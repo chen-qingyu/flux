@@ -75,7 +75,7 @@ public:
     static void report(const std::filesystem::path& output_directory, const ReportBundle& bundle, const std::string& file_suffix = "");
 
 private:
-    static void write_events(const std::filesystem::path& output_directory, const ReportBundle& bundle, const std::string& file_suffix);
+    static void write_entity_events(const std::filesystem::path& output_directory, const ReportBundle& bundle, const std::string& file_suffix);
     static void write_resource_timeline(const std::filesystem::path& output_directory, const ReportBundle& bundle, const std::string& file_suffix);
     static void write_resource_summary(const std::filesystem::path& output_directory, const ReportBundle& bundle, const std::string& file_suffix);
     static void write_activity_summary(const std::filesystem::path& output_directory, const ReportBundle& bundle, const std::string& file_suffix);

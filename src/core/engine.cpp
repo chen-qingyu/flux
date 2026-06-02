@@ -393,6 +393,7 @@ public:
         double wait_time,
         const std::string& task_id)
     {
+        const auto task_name = flux::node(model_, task_id).name;
         for (const auto& resource_id : resource_ids)
         {
             auto& runtime = resource_runtime(registry, resource_id);
@@ -402,7 +403,7 @@ public:
             ++runtime.allocation_count;
             runtime.total_wait_time += wait_time;
             runtime.max_queue_length = std::max(runtime.max_queue_length, queue_length);
-            log_resource_timeline(result, time, runtime, "acquire", queue_length, task_id, flux::node(model_, task_id).name);
+            log_resource_timeline(result, time, runtime, "acquire", queue_length, task_id, task_name);
         }
     }
 
@@ -413,6 +414,7 @@ public:
         double time,
         const std::string& task_id)
     {
+        const auto task_name = flux::node(model_, task_id).name;
         for (const auto& resource_id : resource_ids)
         {
             auto& runtime = resource_runtime(registry, resource_id);
@@ -420,7 +422,7 @@ public:
             update_busy_time(runtime, time);
             runtime.in_use = std::max(0, runtime.in_use - 1);
             runtime.max_queue_length = std::max(runtime.max_queue_length, queue_length);
-            log_resource_timeline(result, time, runtime, "release", queue_length, task_id, flux::node(model_, task_id).name);
+            log_resource_timeline(result, time, runtime, "release", queue_length, task_id, task_name);
         }
     }
 
@@ -453,13 +455,14 @@ public:
 
     void note_request_enqueued(entt::registry& registry, Result& result, const PendingTaskRequest& request)
     {
+        const auto task_name = flux::node(model_, request.task_id).name;
         for (const auto& resource_id : task_resources(request.task_id))
         {
             auto& queue_length = resource_queue_lengths_[resource_id];
             ++queue_length;
             auto& runtime = resource_runtime(registry, resource_id);
             runtime.max_queue_length = std::max(runtime.max_queue_length, queue_length);
-            log_resource_timeline(result, request.arrival_time, runtime, "enqueue", queue_length, request.task_id, flux::node(model_, request.task_id).name);
+            log_resource_timeline(result, request.arrival_time, runtime, "enqueue", queue_length, request.task_id, task_name);
         }
     }
 
@@ -1722,8 +1725,8 @@ void Engine::RunState::handle_finish_task(const ScheduledEvent& event)
     {
         result_.total_transport_distance += node.task->distance;
     }
-    log_task_timeline(node.id, event.time, 0, -1, +1);
     log_event(event.time, token_component, node, "task_finish");
+    log_task_timeline(node.id, event.time, 0, -1, +1);
     registry_.remove<ActiveTask>(event.token);
 
     if (task_type == TaskType::Split)

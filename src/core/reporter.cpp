@@ -70,7 +70,7 @@ void Reporter::write_resource_timeline(const std::filesystem::path& output_direc
     auto writer = csv::make_csv_writer_buffered(stream);
 
     writer << std::vector<std::string>{
-        "time", "resource_id", "resource_name", "change_type", "in_use", "available", "queue_length", "task_id"};
+        "time", "resource_id", "resource_name", "change_type", "in_use", "available", "queue_length", "task_id", "task_name"};
 
     for (const auto& row : bundle.resource_timeline_rows)
     {
@@ -82,7 +82,8 @@ void Reporter::write_resource_timeline(const std::filesystem::path& output_direc
             row.in_use,
             row.available,
             row.queue_length,
-            row.task_id);
+            row.task_id,
+            row.task_name);
     }
 }
 

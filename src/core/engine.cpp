@@ -399,7 +399,7 @@ public:
             ++runtime.allocation_count;
             runtime.total_wait_time += wait_time;
             runtime.max_queue_length = std::max(runtime.max_queue_length, queue_length);
-            log_resource_timeline(result, time, runtime, "allocate", queue_length, task_id);
+            log_resource_timeline(result, time, runtime, "acquire", queue_length, task_id, flux::node(model_, task_id).name);
         }
     }
 
@@ -417,7 +417,7 @@ public:
             update_busy_time(runtime, time);
             runtime.in_use = std::max(0, runtime.in_use - 1);
             runtime.max_queue_length = std::max(runtime.max_queue_length, queue_length);
-            log_resource_timeline(result, time, runtime, "release", queue_length, task_id);
+            log_resource_timeline(result, time, runtime, "release", queue_length, task_id, flux::node(model_, task_id).name);
         }
     }
 
@@ -450,7 +450,7 @@ public:
         }
     }
 
-    void note_request_enqueued(entt::registry& registry, const PendingTaskRequest& request)
+    void note_request_enqueued(entt::registry& registry, Result& result, const PendingTaskRequest& request)
     {
         for (const auto& resource_id : task_resources(request.task_id))
         {
@@ -458,6 +458,7 @@ public:
             ++queue_length;
             auto& runtime = resource_runtime(registry, resource_id);
             runtime.max_queue_length = std::max(runtime.max_queue_length, queue_length);
+            log_resource_timeline(result, request.arrival_time, runtime, "enqueue", queue_length, request.task_id, flux::node(model_, request.task_id).name);
         }
     }
 
@@ -477,7 +478,8 @@ private:
         const ResourceRuntime& runtime,
         const std::string& change_type,
         int queue_length,
-        const std::string& task_id)
+        const std::string& task_id,
+        const std::string& task_name)
     {
         result.reports.resource_timeline_rows.push_back(ResourceTimelineRow{
             time,
@@ -488,6 +490,7 @@ private:
             runtime.capacity - runtime.in_use,
             queue_length,
             task_id,
+            task_name,
         });
     }
 
@@ -785,7 +788,7 @@ public:
         pending_resolution_needed_ = true;
     }
 
-    void enqueue_request(PendingTaskRequest request, entt::registry& registry, ResourceManager& resources);
+    void enqueue_request(PendingTaskRequest request, entt::registry& registry, ResourceManager& resources, Result& result);
     void rearm_resource_queues(const std::string& resource_id);
     struct ReadyRequest
     {
@@ -1114,9 +1117,9 @@ private:
     std::vector<std::string> activity_ids_;
 };
 
-void Engine::PendingManager::enqueue_request(PendingTaskRequest request, entt::registry& registry, ResourceManager& resources)
+void Engine::PendingManager::enqueue_request(PendingTaskRequest request, entt::registry& registry, ResourceManager& resources, Result& result)
 {
-    resources.note_request_enqueued(registry, request);
+    resources.note_request_enqueued(registry, result, request);
     pending_resolution_needed_ = true;
 
     const auto key = pending_queue_key_for_task(request.task_id);
@@ -1408,7 +1411,7 @@ void Engine::RunState::start_or_enqueue_task(entt::entity token_entity, const No
             return;
         }
     }
-    pending_.enqueue_request(PendingTaskRequest{next_order(), token_entity, node.id, time}, registry_, resources_);
+    pending_.enqueue_request(PendingTaskRequest{next_order(), token_entity, node.id, time}, registry_, resources_, result_);
     log_event(time, token(token_entity), node, "task_waiting_for_resources");
 }
 

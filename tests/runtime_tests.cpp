@@ -14,7 +14,7 @@ TEST_CASE("Any-resource strategy allocates one deterministic resource", "[runtim
     REQUIRE(task_starts.size() == 1);
 
     REQUIRE(result.reports.resource_timeline_rows.size() == 2);
-    REQUIRE(result.reports.resource_timeline_rows[0].change_type == "allocate");
+    REQUIRE(result.reports.resource_timeline_rows[0].change_type == "acquire");
     REQUIRE(result.reports.resource_timeline_rows[0].resource_name == "柜员");
     REQUIRE(result.reports.resource_timeline_rows[0].task_id == "Task_service");
     REQUIRE(result.reports.resource_timeline_rows[1].change_type == "release");
@@ -32,8 +32,8 @@ TEST_CASE("All-resource strategy allocates every associated resource", "[runtime
     REQUIRE(task_starts.size() == 1);
 
     REQUIRE(result.reports.resource_timeline_rows.size() == 4);
-    REQUIRE(result.reports.resource_timeline_rows[0].change_type == "allocate");
-    REQUIRE(result.reports.resource_timeline_rows[1].change_type == "allocate");
+    REQUIRE(result.reports.resource_timeline_rows[0].change_type == "acquire");
+    REQUIRE(result.reports.resource_timeline_rows[1].change_type == "acquire");
     REQUIRE(result.reports.resource_timeline_rows[0].time == 0.0);
     REQUIRE(result.reports.resource_timeline_rows[1].time == 0.0);
 
@@ -191,12 +191,12 @@ TEST_CASE("Lifecycle model releases bound and remaining held resources correctly
     const auto result = flux::test_support::run_model(std::filesystem::path("data") / "tests" / "lifecycle.bpmn");
 
     REQUIRE(result.reports.resource_timeline_rows.size() == 8);
-    REQUIRE(result.reports.resource_timeline_rows[0].change_type == "allocate");
-    REQUIRE(result.reports.resource_timeline_rows[1].change_type == "allocate");
+    REQUIRE(result.reports.resource_timeline_rows[0].change_type == "acquire");
+    REQUIRE(result.reports.resource_timeline_rows[1].change_type == "acquire");
     REQUIRE(result.reports.resource_timeline_rows[2].change_type == "release");
     REQUIRE(result.reports.resource_timeline_rows[3].change_type == "release");
-    REQUIRE(result.reports.resource_timeline_rows[4].change_type == "allocate");
-    REQUIRE(result.reports.resource_timeline_rows[5].change_type == "allocate");
+    REQUIRE(result.reports.resource_timeline_rows[4].change_type == "acquire");
+    REQUIRE(result.reports.resource_timeline_rows[5].change_type == "acquire");
     REQUIRE(result.reports.resource_timeline_rows[6].change_type == "release");
     REQUIRE(result.reports.resource_timeline_rows[7].change_type == "release");
     REQUIRE(result.reports.resource_timeline_rows[2].resource_name == "叉车");
@@ -364,7 +364,7 @@ TEST_CASE("Acquire-combine-restore-release preserves held resources through snap
     const auto alloc_count = std::count_if(result.reports.resource_timeline_rows.begin(),
                                            result.reports.resource_timeline_rows.end(),
                                            [](const auto& row)
-                                           { return row.change_type == "allocate"; });
+                                           { return row.change_type == "acquire"; });
     const auto release_count = std::count_if(result.reports.resource_timeline_rows.begin(),
                                              result.reports.resource_timeline_rows.end(),
                                              [](const auto& row)

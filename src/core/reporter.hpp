@@ -27,6 +27,7 @@ struct ResourceTimelineRow
     int available{0};
     int queue_length{0};
     std::string task_id;
+    std::string task_name;
 };
 
 struct ResourceSummaryRow

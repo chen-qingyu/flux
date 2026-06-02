@@ -147,6 +147,26 @@ void Reporter::write_task_summary(const std::filesystem::path& output_directory,
     }
 }
 
+void Reporter::write_task_timeline(const std::filesystem::path& output_directory, const ReportBundle& bundle, const std::string& file_suffix)
+{
+    auto stream = open_csv_file(csv_path(output_directory, "task_timeline", file_suffix));
+    auto writer = csv::make_csv_writer_buffered(stream);
+
+    writer << std::vector<std::string>{
+        "time", "task_id", "task_name", "waiting", "running", "completed"};
+
+    for (const auto& row : bundle.task_timeline_rows)
+    {
+        writer << std::make_tuple(
+            format_fixed(row.time, TIME_PRECISION),
+            row.task_id,
+            row.task_name,
+            row.waiting,
+            row.running,
+            row.completed);
+    }
+}
+
 void Reporter::report(const std::filesystem::path& output_directory, const ReportBundle& bundle, const std::string& file_suffix)
 {
     std::filesystem::create_directories(output_directory);
@@ -155,6 +175,7 @@ void Reporter::report(const std::filesystem::path& output_directory, const Repor
     write_resource_timeline(output_directory, bundle, file_suffix);
     write_resource_summary(output_directory, bundle, file_suffix);
     write_task_summary(output_directory, bundle, file_suffix);
+    write_task_timeline(output_directory, bundle, file_suffix);
 }
 
 } // namespace flux

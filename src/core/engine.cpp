@@ -166,6 +166,9 @@ struct TaskRuntime
     double busy_time{0.0};
     double last_busy_start_time{0.0};
     std::size_t active_count{0};
+    int waiting_count{0};
+    int running_count{0};
+    int completed_count{0};
     SampleStats queue_stats;
     SampleStats process_stats;
 };
@@ -1048,6 +1051,22 @@ private:
         });
     }
 
+    void log_task_timeline(const std::string& task_id, double time, int waiting_delta, int running_delta, int completed_delta)
+    {
+        auto& task = task_runtimes_.at(task_id);
+        task.waiting_count += waiting_delta;
+        task.running_count += running_delta;
+        task.completed_count += completed_delta;
+        result_.reports.task_timeline_rows.push_back(TaskTimelineRow{
+            time,
+            task.task_id,
+            task.task_name,
+            task.waiting_count,
+            task.running_count,
+            task.completed_count,
+        });
+    }
+
     void apply_release(const std::vector<std::string>& resource_ids, double time, const std::string& task_id)
     {
         resources_.apply_release(registry_, result_, resource_ids, time, task_id);
@@ -1080,6 +1099,7 @@ private:
 
         const auto duration = sampler_.sample(node.task->duration_distribution);
         log_event(time, token_component, node, "task_start");
+        log_task_timeline(node.id, time, wait_time > 0.0 ? -1 : 0, +1, 0);
 
         schedule(ScheduledEvent{time + duration, next_order(), ScheduledEventType::FinishTask, node.id, token_entity, std::nullopt});
         if (node.task->type == TaskType::Split)
@@ -1413,6 +1433,7 @@ void Engine::RunState::start_or_enqueue_task(entt::entity token_entity, const No
     }
     pending_.enqueue_request(PendingTaskRequest{next_order(), token_entity, node.id, time}, registry_, resources_, result_);
     log_event(time, token(token_entity), node, "task_waiting_for_resources");
+    log_task_timeline(node.id, time, +1, 0, 0);
 }
 
 void Engine::RunState::schedule_split_outputs(entt::entity token_entity, const NodeDefinition& node, double start_time, double duration)
@@ -1699,6 +1720,7 @@ void Engine::RunState::handle_finish_task(const ScheduledEvent& event)
     {
         result_.total_transport_distance += node.task->distance;
     }
+    log_task_timeline(node.id, event.time, 0, -1, +1);
     log_event(event.time, token_component, node, "task_finish");
     registry_.remove<ActiveTask>(event.token);
 

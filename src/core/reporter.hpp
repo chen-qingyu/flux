@@ -44,6 +44,16 @@ struct ResourceSummaryRow
     double simulation_horizon{0.0};
 };
 
+struct TaskTimelineRow
+{
+    double time{0.0};
+    std::string task_id;
+    std::string task_name;
+    int waiting{0};
+    int running{0};
+    int completed{0};
+};
+
 struct TaskSummaryRow
 {
     std::string task_id;
@@ -68,6 +78,7 @@ struct ReportBundle
     std::vector<ResourceTimelineRow> resource_timeline_rows;
     std::vector<ResourceSummaryRow> resource_summary_rows;
     std::vector<TaskSummaryRow> task_summary_rows;
+    std::vector<TaskTimelineRow> task_timeline_rows;
 };
 
 class Reporter
@@ -80,6 +91,7 @@ private:
     static void write_resource_timeline(const std::filesystem::path& output_directory, const ReportBundle& bundle, const std::string& file_suffix);
     static void write_resource_summary(const std::filesystem::path& output_directory, const ReportBundle& bundle, const std::string& file_suffix);
     static void write_task_summary(const std::filesystem::path& output_directory, const ReportBundle& bundle, const std::string& file_suffix);
+    static void write_task_timeline(const std::filesystem::path& output_directory, const ReportBundle& bundle, const std::string& file_suffix);
 };
 
 } // namespace flux

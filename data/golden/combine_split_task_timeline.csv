@@ -1,0 +1,5 @@
+time,task_id,task_name,waiting,running,completed
+3.00,Activity_combine,合并活动,0,1,0
+13.00,Activity_combine,合并活动,0,0,1
+13.00,Activity_split,拆分活动,0,1,0
+23.00,Activity_split,拆分活动,0,0,1

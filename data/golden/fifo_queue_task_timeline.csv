@@ -1,0 +1,9 @@
+time,task_id,task_name,waiting,running,completed
+0.00,Task_service,FIFO服务,0,1,0
+1.00,Task_service,FIFO服务,1,1,0
+2.00,Task_service,FIFO服务,2,1,0
+4.00,Task_service,FIFO服务,2,0,1
+4.00,Task_service,FIFO服务,1,1,1
+8.00,Task_service,FIFO服务,1,0,2
+8.00,Task_service,FIFO服务,0,1,2
+12.00,Task_service,FIFO服务,0,0,3

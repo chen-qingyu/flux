@@ -103,13 +103,14 @@ python run.py data/demo.bpmn --seed 42
 
 ## 输出文件
 
-程序会固定在 `output/` 目录生成文件，比如输入 `data/demo.bpmn`，会生成：
+程序在 `output/` 目录生成 4 个 CSV 文件，文件名规则为 `<报表名>_<输入文件名>.csv`。
 
-- `events_demo.csv`：实体事件日志
-- `resource_timeline_demo.csv`：资源占用时间线
-- `resource_summary_demo.csv`：资源利用率和等待统计
+- `events`：实体事件日志
+- `resource_timeline`：资源占用时间线
+- `resource_summary`：资源利用率和等待统计
+- `activity_summary`：活动级统计
 
-输出文件名规则是：`<报表名>_<输入文件名>.csv`。
+各报表的详细定义见 [docs/output.md](docs/output.md)。
 
 ## 扩展属性
 

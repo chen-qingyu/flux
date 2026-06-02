@@ -47,26 +47,29 @@
 
 ### 列定义
 
-| 列名                   | 类型    | 说明                                 |
-| ---------------------- | ------- | ------------------------------------ |
-| `task_name`            | string  | 任务名称，取自 `<task name="...">`   |
-| `task_id`              | string  | 任务 ID，取自 `<task id="...">`      |
-| `arrival_count`        | integer | 到达该活动的实体总数                 |
-| `start_count`          | integer | 启动执行的实体数（<= arrival_count） |
-| `busy_time`            | double  | 活动忙碌时长（时间段并集）           |
-| `busy_rate`            | double  | 忙碌率，取值范围 `[0, 1]`            |
-| `queue_total_time`     | double  | 所有已启动实体的等待时间总和         |
-| `queue_average_time`   | double  | 所有已启动实体的平均等待时间         |
-| `queue_max_time`       | double  | 所有已启动实体的最大等待时间         |
-| `queue_min_time`       | double  | 所有已启动实体的最小等待时间         |
-| `process_total_time`   | double  | 所有已完成实体的处理时间总和         |
-| `process_average_time` | double  | 所有已完成实体的平均处理时间         |
-| `process_max_time`     | double  | 所有已完成实体的最大处理时间         |
-| `process_min_time`     | double  | 所有已完成实体的最小处理时间         |
+| 列名                   | 类型    | 说明                         |
+| ---------------------- | ------- | ---------------------------- |
+| `task_name`            | string  | 任务名称                     |
+| `task_id`              | string  | 任务 ID                      |
+| `arrival_count`        | integer | 到达该活动的实体总数         |
+| `start_count`          | integer | 启动执行的实体数             |
+| `busy_time`            | double  | 活动忙碌时长（时间段并集）   |
+| `busy_rate`            | double  | 忙碌率，取值范围 `[0, 1]`    |
+| `queue_total_time`     | double  | 所有已启动实体的等待时间总和 |
+| `queue_average_time`   | double  | 所有已启动实体的平均等待时间 |
+| `queue_max_time`       | double  | 所有已启动实体的最大等待时间 |
+| `queue_min_time`       | double  | 所有已启动实体的最小等待时间 |
+| `process_total_time`   | double  | 所有已完成实体的处理时间总和 |
+| `process_average_time` | double  | 所有已完成实体的平均处理时间 |
+| `process_max_time`     | double  | 所有已完成实体的最大处理时间 |
+| `process_min_time`     | double  | 所有已完成实体的最小处理时间 |
 
 ### 说明
 
-- `arrival_count - start_count` 为仿真结束时仍在等待资源而未启动的实体数；对于 combine 活动，`arrival_count` 为到达等效实体数，`start_count` 为合并后产生的实体数。
+- `arrival_count >= start_count` 始终成立。`arrival_count - start_count` 为仿真结束时仍在等待资源而未启动的实体数；对于 combine 活动，`arrival_count` 为到达等效实体数，`start_count` 为合并后产生的实体数。
+- `queue_average_time == queue_total_time / start_count`（当 `start_count > 0`）。
+- `process_average_time == process_total_time / start_count`（当 `start_count > 0`）。
+- `busy_rate == busy_time / 仿真时长`。
 
 ## task_timeline
 
@@ -92,6 +95,11 @@
 | 实体不等待直接开始执行           |     —     |    +1     |      —      |
 | 实体完成执行                     |     —     |    -1     |     +1      |
 
+### 说明
+
+- `waiting + running + completed` 为该任务累计到达的实体数，峰值等于 `task_summary.arrival_count`。
+- 仿真结束时，`waiting == 0`、`running == 0`、`completed == task_summary 中对应任务的 start_count`。
+
 ## resource_timeline
 
 资源状态时间线，记录每次资源分配、释放与排队事件。
@@ -105,10 +113,14 @@
 | `resource_name` | string  | 资源名称                                                 |
 | `change_type`   | string  | 变化类型：`acquire` 分配、`release` 释放、`enqueue` 排队 |
 | `in_use`        | integer | 事件发生后该资源的占用数                                 |
-| `available`     | integer | 事件发生后该资源的可用数（容量 - in_use）                |
+| `available`     | integer | 事件发生后该资源的可用数                                 |
 | `queue_length`  | integer | 事件发生时该资源的等待队列长度                           |
 | `task_id`       | string  | 触发事件的任务 ID                                        |
 | `task_name`     | string  | 触发事件的任务名称                                       |
+
+### 说明
+
+- `in_use + available == 该资源容量`。资源容量不在csv中输出，因为它是模型属性。
 
 ## resource_summary
 
@@ -131,3 +143,8 @@
 | `max_queue_length`  | integer | 最大等待队列长度           |
 | `average_wait_time` | double  | 平均等待时间               |
 | `allocation_count`  | integer | 资源被分配的总次数         |
+
+### 说明
+
+- `busy_time + idle_time == 仿真时长`。仿真时长可从 `entity_events` 的最后一条事件时间获取，或查看控制台日志。
+- `utilization == busy_time / 仿真时长`。

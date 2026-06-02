@@ -106,10 +106,10 @@ python run.py data/demo.bpmn --seed 42
 程序在 `output/` 目录生成 5 个 CSV 文件，文件名规则为 `<报表名>_<输入文件名>.csv`。
 
 - `entity_events`：实体事件日志
-- `resource_timeline`：资源占用时间线
-- `resource_summary`：资源利用率和等待统计
+- `task_summary`：任务侧统计汇总
 - `task_timeline`：任务状态时间线
-- `task_summary`：活动级统计
+- `resource_summary`：资源侧统计汇总
+- `resource_timeline`：资源状态时间线
 
 各报表的详细定义见 [docs/output.md](docs/output.md)。
 

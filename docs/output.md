@@ -66,7 +66,7 @@
 
 ### 说明
 
-- `arrival_count >= start_count` 始终成立。`arrival_count - start_count` 为仿真结束时仍在等待资源而未启动的实体数；对于 combine 活动，`arrival_count` 为到达等效实体数，`start_count` 为合并后产生的实体数。
+- `arrival_count >= start_count` 始终成立。`arrival_count - start_count` 为仿真结束时仍在等待资源而未启动的实体数。对于 combine 活动，`arrival_count` 为合并后产生的 batch 实体数、`start_count` 为实际启动的 batch 数，两者的差值为 pending（未获取到资源）的 batch。
 - `queue_average_time == queue_total_time / start_count`（当 `start_count > 0`）。
 - `process_average_time == process_total_time / start_count`（当 `start_count > 0`）。
 - `busy_rate == busy_time / 仿真时长`。

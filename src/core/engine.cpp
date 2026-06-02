@@ -1583,7 +1583,10 @@ void Engine::RunState::handle_arrive_node(const ScheduledEvent& event)
 
     if (node.type == NodeType::Task)
     {
-        task_runtimes_.at(node.id).entity_count += node.task->type == TaskType::Combine ? combine_equivalent_units(node, event.token) : 1;
+        if (node.task->type != TaskType::Combine)
+        {
+            ++task_runtimes_.at(node.id).entity_count;
+        }
         log_event(event.time, token_component, node, "task_arrive");
 
         if (node.task->type == TaskType::Combine)
@@ -1632,6 +1635,7 @@ void Engine::RunState::handle_arrive_node(const ScheduledEvent& event)
                 registry_.emplace<CombineBatch>(batch_token, CombineBatch{members});
                 tokens_.set_combine_history(registry_, batch_token, std::move(snapshots));
 
+                ++task_runtimes_.at(node.id).entity_count;
                 start_or_enqueue_task(batch_token, node, event.time);
             }
             return;

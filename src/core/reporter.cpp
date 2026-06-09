@@ -1,6 +1,7 @@
 #include "reporter.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <stdexcept>
@@ -23,8 +24,9 @@ std::string format_fixed(double value, int precision)
     return fmt::format("{:.{}f}", value, precision);
 }
 
-std::ofstream open_csv_file(const std::filesystem::path& path)
+std::ofstream open_csv(const std::filesystem::path& dir, const std::string& report_name, const std::string& input_file, const long long& ts)
 {
+    auto path = input_file.empty() ? dir / (report_name + ".csv") : dir / fmt::format("{}-{}-{}.csv", input_file, report_name, ts);
     std::ofstream stream(path, std::ios::binary);
     if (!stream)
     {
@@ -33,20 +35,11 @@ std::ofstream open_csv_file(const std::filesystem::path& path)
     return stream;
 }
 
-std::filesystem::path csv_path(const std::filesystem::path& output_directory, const std::string& base_name, const std::string& file_suffix)
-{
-    if (file_suffix.empty())
-    {
-        return output_directory / (base_name + ".csv");
-    }
-    return output_directory / fmt::format("{}_{}.csv", base_name, file_suffix);
-}
-
 } // namespace
 
-void Reporter::write_entity_events(const std::filesystem::path& output_directory, const ReportBundle& bundle, const std::string& file_suffix)
+void Reporter::write_entity_events(const std::filesystem::path& output_dir, const ReportBundle& bundle, const std::string& input_file, const long long& ts)
 {
-    auto stream = open_csv_file(csv_path(output_directory, "entity_events", file_suffix));
+    auto stream = open_csv(output_dir, "entity_events", input_file, ts);
     auto writer = csv::make_csv_writer_buffered(stream);
 
     writer << std::vector<std::string>{
@@ -64,9 +57,9 @@ void Reporter::write_entity_events(const std::filesystem::path& output_directory
     }
 }
 
-void Reporter::write_resource_timeline(const std::filesystem::path& output_directory, const ReportBundle& bundle, const std::string& file_suffix)
+void Reporter::write_resource_timeline(const std::filesystem::path& output_dir, const ReportBundle& bundle, const std::string& input_file, const long long& ts)
 {
-    auto stream = open_csv_file(csv_path(output_directory, "resource_timeline", file_suffix));
+    auto stream = open_csv(output_dir, "resource_timeline", input_file, ts);
     auto writer = csv::make_csv_writer_buffered(stream);
 
     writer << std::vector<std::string>{
@@ -87,9 +80,9 @@ void Reporter::write_resource_timeline(const std::filesystem::path& output_direc
     }
 }
 
-void Reporter::write_resource_summary(const std::filesystem::path& output_directory, const ReportBundle& bundle, const std::string& file_suffix)
+void Reporter::write_resource_summary(const std::filesystem::path& output_dir, const ReportBundle& bundle, const std::string& input_file, const long long& ts)
 {
-    auto stream = open_csv_file(csv_path(output_directory, "resource_summary", file_suffix));
+    auto stream = open_csv(output_dir, "resource_summary", input_file, ts);
     auto writer = csv::make_csv_writer_buffered(stream);
     auto rows = bundle.resource_summary_rows;
     std::stable_sort(rows.begin(), rows.end(), [](const auto& left, const auto& right)
@@ -113,9 +106,9 @@ void Reporter::write_resource_summary(const std::filesystem::path& output_direct
     }
 }
 
-void Reporter::write_task_summary(const std::filesystem::path& output_directory, const ReportBundle& bundle, const std::string& file_suffix)
+void Reporter::write_task_summary(const std::filesystem::path& output_dir, const ReportBundle& bundle, const std::string& input_file, const long long& ts)
 {
-    auto stream = open_csv_file(csv_path(output_directory, "task_summary", file_suffix));
+    auto stream = open_csv(output_dir, "task_summary", input_file, ts);
     auto writer = csv::make_csv_writer_buffered(stream);
     auto rows = bundle.task_summary_rows;
     std::stable_sort(rows.begin(), rows.end(), [](const auto& left, const auto& right)
@@ -146,9 +139,9 @@ void Reporter::write_task_summary(const std::filesystem::path& output_directory,
     }
 }
 
-void Reporter::write_task_timeline(const std::filesystem::path& output_directory, const ReportBundle& bundle, const std::string& file_suffix)
+void Reporter::write_task_timeline(const std::filesystem::path& output_dir, const ReportBundle& bundle, const std::string& input_file, const long long& ts)
 {
-    auto stream = open_csv_file(csv_path(output_directory, "task_timeline", file_suffix));
+    auto stream = open_csv(output_dir, "task_timeline", input_file, ts);
     auto writer = csv::make_csv_writer_buffered(stream);
 
     writer << std::vector<std::string>{
@@ -166,15 +159,18 @@ void Reporter::write_task_timeline(const std::filesystem::path& output_directory
     }
 }
 
-void Reporter::report(const std::filesystem::path& output_directory, const ReportBundle& bundle, const std::string& file_suffix)
+void Reporter::report(const std::filesystem::path& output_dir, const ReportBundle& bundle, const std::string& input_file)
 {
-    std::filesystem::create_directories(output_directory);
+    std::filesystem::create_directories(output_dir);
 
-    write_entity_events(output_directory, bundle, file_suffix);
-    write_resource_timeline(output_directory, bundle, file_suffix);
-    write_resource_summary(output_directory, bundle, file_suffix);
-    write_task_summary(output_directory, bundle, file_suffix);
-    write_task_timeline(output_directory, bundle, file_suffix);
+    const auto now = std::chrono::system_clock::now();
+    const auto ts = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count();
+
+    write_entity_events(output_dir, bundle, input_file, ts);
+    write_resource_timeline(output_dir, bundle, input_file, ts);
+    write_resource_summary(output_dir, bundle, input_file, ts);
+    write_task_summary(output_dir, bundle, input_file, ts);
+    write_task_timeline(output_dir, bundle, input_file, ts);
 }
 
 } // namespace flux

@@ -83,14 +83,14 @@ struct ReportBundle
 class Reporter
 {
 public:
-    static void report(const std::filesystem::path& output_directory, const ReportBundle& bundle, const std::string& file_suffix = "");
+    static void report(const std::filesystem::path& output_dir, const ReportBundle& bundle, const std::string& input_file = "");
 
 private:
-    static void write_entity_events(const std::filesystem::path& output_directory, const ReportBundle& bundle, const std::string& file_suffix);
-    static void write_resource_timeline(const std::filesystem::path& output_directory, const ReportBundle& bundle, const std::string& file_suffix);
-    static void write_resource_summary(const std::filesystem::path& output_directory, const ReportBundle& bundle, const std::string& file_suffix);
-    static void write_task_summary(const std::filesystem::path& output_directory, const ReportBundle& bundle, const std::string& file_suffix);
-    static void write_task_timeline(const std::filesystem::path& output_directory, const ReportBundle& bundle, const std::string& file_suffix);
+    static void write_entity_events(const std::filesystem::path& output_dir, const ReportBundle& bundle, const std::string& input_file, const long long& ts);
+    static void write_resource_timeline(const std::filesystem::path& output_dir, const ReportBundle& bundle, const std::string& input_file, const long long& ts);
+    static void write_resource_summary(const std::filesystem::path& output_dir, const ReportBundle& bundle, const std::string& input_file, const long long& ts);
+    static void write_task_summary(const std::filesystem::path& output_dir, const ReportBundle& bundle, const std::string& input_file, const long long& ts);
+    static void write_task_timeline(const std::filesystem::path& output_dir, const ReportBundle& bundle, const std::string& input_file, const long long& ts);
 };
 
 } // namespace flux

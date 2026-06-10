@@ -11,7 +11,7 @@
 int main(int argc, char** argv)
 {
     constexpr std::uint64_t default_seed = 42;
-    argparse::ArgumentParser program("flux", "0.1.0");
+    argparse::ArgumentParser program("flux", "1.0.0");
     program.add_argument("file")
         .help("Path to the BPMN file to simulate.");
     program.add_argument("--seed")

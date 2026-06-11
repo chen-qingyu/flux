@@ -145,7 +145,7 @@ void Reporter::write_task_timeline(const std::filesystem::path& output_dir, cons
     auto writer = csv::make_csv_writer_buffered(stream);
 
     writer << std::vector<std::string>{
-        "time", "task_id", "task_name", "waiting", "running", "completed"};
+        "time", "task_id", "task_name", "arrived", "waiting", "running", "completed"};
 
     for (const auto& row : bundle.task_timeline_rows)
     {
@@ -153,6 +153,7 @@ void Reporter::write_task_timeline(const std::filesystem::path& output_dir, cons
             format_fixed(row.time, TIME_PRECISION),
             row.task_id,
             row.task_name,
+            row.arrived,
             row.waiting,
             row.running,
             row.completed);

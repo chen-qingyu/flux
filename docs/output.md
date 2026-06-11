@@ -77,27 +77,28 @@
 
 ### 列定义
 
-| 列名        | 类型    | 说明               |
-| ----------- | ------- | ------------------ |
-| `time`      | double  | 事件发生时间       |
-| `task_id`   | string  | 任务 ID            |
-| `task_name` | string  | 任务名称           |
-| `waiting`   | integer | 当前排队的实体数   |
-| `running`   | integer | 当前执行中的实体数 |
-| `completed` | integer | 累计完成的实体数   |
+| 列名        | 类型    | 说明                   |
+| ----------- | ------- | ---------------------- |
+| `time`      | double  | 事件发生时间           |
+| `task_id`   | string  | 任务 ID                |
+| `task_name` | string  | 任务名称               |
+| `arrived`   | integer | 累计到达该任务的实体数 |
+| `waiting`   | integer | 当前排队的实体数       |
+| `running`   | integer | 当前执行中的实体数     |
+| `completed` | integer | 累计完成的实体数       |
 
 ### 状态变化点
 
-| 触发事件                         | `waiting` | `running` | `completed` |
-| -------------------------------- | :-------: | :-------: | :---------: |
-| 实体到达后资源不足，进入等待队列 |    +1     |     —     |      —      |
-| 实体开始执行（从等待队列来）     |    -1     |    +1     |      —      |
-| 实体不等待直接开始执行           |     —     |    +1     |      —      |
-| 实体完成执行                     |     —     |    -1     |     +1      |
+| 触发事件                         | `arrived` | `waiting` | `running` | `completed` |
+| -------------------------------- | :-------: | :-------: | :-------: | :---------: |
+| 实体到达后资源不足，进入等待队列 |    +1     |    +1     |     —     |      —      |
+| 实体开始执行（从等待队列来）     |     —     |    -1     |    +1     |      —      |
+| 实体不等待直接开始执行           |    +1     |     —     |    +1     |      —      |
+| 实体完成执行                     |     —     |     —     |    -1     |     +1      |
 
 ### 说明
 
-- `waiting + running + completed` 为该任务累计到达的实体数，峰值等于 `task_summary.arrival_count`。
+- `arrived == waiting + running + completed`，峰值等于 `task_summary.arrival_count`。
 - 仿真结束时，`waiting == 0`、`running == 0`、`completed == task_summary 中对应任务的 start_count`。
 
 ## resource_timeline

@@ -48,6 +48,7 @@ struct TaskTimelineRow
     double time{0.0};
     std::string task_id;
     std::string task_name;
+    std::size_t arrived{0};
     int waiting{0};
     int running{0};
     int completed{0};

@@ -1062,6 +1062,7 @@ private:
             time,
             task.task_id,
             task.task_name,
+            task.entity_count,
             task.waiting_count,
             task.running_count,
             task.completed_count,

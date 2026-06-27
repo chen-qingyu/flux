@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+from . import db
+
 INSTANCES_ROOT = Path("instances")
 
 
@@ -30,7 +32,8 @@ class InstanceState:
 class InstanceManager:
     def __init__(self):
         self._instances: dict[str, InstanceState] = {}
-        INSTANCES_ROOT.mkdir(exist_ok=True)
+        self._conn = db.init_db()
+        self._load_all()
 
     def create(self, model_name: str, model_content: str,
                external_files: dict[str, str] | None = None,
@@ -41,12 +44,15 @@ class InstanceManager:
         out_dir = instance_dir / "output"
         ext_dir.mkdir(parents=True)
         out_dir.mkdir()
+        created_at = datetime.now(timezone.utc).isoformat()
 
         (instance_dir / "model.bpmn").write_text(model_content, encoding="utf-8")
 
         if external_files:
             for filename, csv_content in external_files.items():
                 (ext_dir / f"{filename}.csv").write_text(csv_content, encoding="utf-8")
+
+        db.insert(self._conn, instance_id, model_name, "running", created_at)
 
         p = mp.Process(
             target=_run_worker,
@@ -61,7 +67,7 @@ class InstanceManager:
             status="running",
             process=p,
             instance_dir=instance_dir,
-            created_at=datetime.now(timezone.utc).isoformat(),
+            created_at=created_at,
         )
         self._instances[instance_id] = state
         return state
@@ -88,11 +94,12 @@ class InstanceManager:
             state.process.terminate()
             state.process.join(timeout=5)
         state.status = "cancelled"
+        db.update(self._conn, instance_id, status="cancelled")
         shutil.rmtree(state.instance_dir, ignore_errors=True)
         return state
 
     def delete(self, instance_id: str) -> InstanceState | None:
-        """删除实例：杀进程、删文件、移除内存记录。"""
+        """删除实例：杀进程、删文件、移除记录。"""
         state = self._instances.get(instance_id)
         if state is None:
             return None
@@ -100,6 +107,7 @@ class InstanceManager:
             state.process.terminate()
             state.process.join(timeout=5)
         shutil.rmtree(state.instance_dir, ignore_errors=True)
+        db.delete(self._conn, instance_id)
         del self._instances[instance_id]
         return state
 
@@ -111,12 +119,38 @@ class InstanceManager:
             text = status_file.read_text().strip()
             if text == "completed":
                 state.status = "completed"
+                db.update(self._conn, state.instance_id, status="completed")
             elif text.startswith("failed:"):
                 state.status = "failed"
                 state.error = text[7:]
+                db.update(self._conn, state.instance_id, status="failed", error=state.error)
         elif state.process and not state.process.is_alive():
             state.status = "failed"
             state.error = f"exit code {state.process.exitcode}"
+            db.update(self._conn, state.instance_id, status="failed", error=state.error)
+
+    def _load_all(self):
+        for row in db.list_all(self._conn):
+            instance_dir = INSTANCES_ROOT / row["instance_id"]
+            status = row["status"]
+            error = row["error"]
+
+            # 重启后 running 实例的子进程已消失，标记为服务重启中断
+            if status == "running":
+                status = "failed"
+                error = "server restarted"
+                db.update(self._conn, row["instance_id"], status=status, error=error)
+
+            state = InstanceState(
+                instance_id=row["instance_id"],
+                model_name=row["model_name"],
+                status=status,
+                process=None,
+                instance_dir=instance_dir,
+                created_at=row["created_at"],
+                error=error,
+            )
+            self._instances[state.instance_id] = state
 
 
 def _run_worker(instance_dir: str, model_name: str, model_content: str,

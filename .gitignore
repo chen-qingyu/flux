@@ -7,3 +7,4 @@
 /python/*.egg-info/
 /python/dist/
 __pycache__/
+/instances/

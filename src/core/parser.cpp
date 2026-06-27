@@ -22,23 +22,27 @@ namespace flux
 class Parser::ParseSession
 {
 public:
-    Model parse(const std::filesystem::path& file_path)
+    explicit ParseSession(std::filesystem::path working_dir = std::filesystem::current_path())
+        : working_dir_(std::move(working_dir))
+    {
+    }
+
+    Model parse_string(const std::string& bpmn_xml)
     {
         pugi::xml_document document;
-        const auto path_text = file_path.string();
-        const auto result = document.load_file(path_text.c_str());
+        const auto result = document.load_string(bpmn_xml.c_str());
         if (!result)
         {
-            throw std::runtime_error("Failed to parse BPMN file '" + path_text + "': " + result.description());
+            throw std::runtime_error("Failed to parse BPMN content: " + std::string(result.description()));
         }
 
         const auto definitions = document.document_element();
         if (!definitions || local_name(definitions.name()) != "definitions")
         {
-            throw std::runtime_error("Input file '" + path_text + "' is not a BPMN definitions document.");
+            throw std::runtime_error("Input is not a BPMN definitions document.");
         }
 
-        const auto process = find_process(definitions, path_text);
+        const auto process = find_process(definitions);
         initialize_model(process);
         parse_process_children(process);
         finalize_model();
@@ -116,10 +120,10 @@ private:
 
     [[nodiscard]] std::vector<ExternalRecord> read_external_records(const std::string& start_id) const
     {
-        const auto csv_path = std::filesystem::current_path() / "data" / "external" / (start_id + ".csv");
+        const auto csv_path = working_dir_ / (start_id + ".csv");
         if (!std::filesystem::exists(csv_path))
         {
-            throw std::runtime_error("Start event '" + start_id + "' external csv file 'data/external/" + start_id + ".csv' was not found.");
+            throw std::runtime_error("Start event '" + start_id + "' external csv file '" + csv_path.string() + "' was not found.");
         }
 
         csv::CSVReader reader(csv_path.string());
@@ -454,7 +458,7 @@ private:
         return definition;
     }
 
-    [[nodiscard]] pugi::xml_node find_process(const pugi::xml_node& definitions, const std::string& path_text) const
+    [[nodiscard]] pugi::xml_node find_process(const pugi::xml_node& definitions) const
     {
         for (const auto& child : definitions.children())
         {
@@ -464,7 +468,7 @@ private:
             }
         }
 
-        throw std::runtime_error("BPMN file '" + path_text + "' does not contain a process element.");
+        throw std::runtime_error("BPMN content does not contain a process element.");
     }
 
     void initialize_model(const pugi::xml_node& process)
@@ -868,12 +872,13 @@ private:
 
     Model model_;
     std::vector<std::pair<std::string, std::string>> associations_;
+    std::filesystem::path working_dir_;
 };
 
-Model Parser::parse(const std::filesystem::path& file_path)
+Model Parser::parse(const std::string& model_content, const std::filesystem::path& external_dir)
 {
-    ParseSession session;
-    return session.parse(file_path);
+    ParseSession session(external_dir.empty() ? std::filesystem::current_path() / "data" / "external" : external_dir);
+    return session.parse_string(model_content);
 }
 
 } // namespace flux

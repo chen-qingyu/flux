@@ -2,6 +2,8 @@
 
 #include <filesystem>
 #include <fstream>
+#include <sstream>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -39,9 +41,21 @@ inline std::string read_text(const std::filesystem::path& path)
     return normalized;
 }
 
+inline Model parse_file(const std::filesystem::path& file_path)
+{
+    std::ifstream stream(file_path);
+    if (!stream)
+    {
+        throw std::runtime_error("Failed to open file: " + file_path.string());
+    }
+    std::ostringstream buffer;
+    buffer << stream.rdbuf();
+    return Parser::parse(buffer.str());
+}
+
 inline Result run_model(const std::filesystem::path& model_path, std::uint64_t seed = 42)
 {
-    const auto model = Parser::parse(model_path);
+    const auto model = parse_file(model_path);
     return Engine::run(model, seed);
 }
 

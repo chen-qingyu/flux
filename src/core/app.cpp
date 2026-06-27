@@ -1,7 +1,6 @@
 #include "app.hpp"
 
 #include <chrono>
-#include <filesystem>
 #include <string>
 
 #include <spdlog/spdlog.h>
@@ -13,19 +12,21 @@
 namespace flux
 {
 
-void run(const std::string& file_path, std::uint64_t seed)
+void run(const std::string& model_name,
+         const std::string& model_content,
+         const std::string& output_dir,
+         const std::string& external_dir,
+         std::uint64_t random_seed)
 {
     const auto start_time = std::chrono::steady_clock::now();
-    const auto input_file = std::filesystem::path{file_path};
-    const auto output_dir = std::filesystem::path{"output"};
-    spdlog::info("Input: {}", file_path);
-    spdlog::info("Output directory: {}", output_dir.string());
-    spdlog::info("Seed: {}", seed);
+    spdlog::info("Input: {}", model_name);
+    spdlog::info("Output directory: {}", output_dir);
+    spdlog::info("Seed: {}", random_seed);
     spdlog::info("Simulation starting...");
 
-    const auto model = Parser::parse(input_file);
-    const auto result = Engine::run(model, seed);
-    Reporter::report(output_dir, result.reports, input_file.stem().string());
+    const auto model = Parser::parse(model_content, external_dir);
+    const auto result = Engine::run(model, random_seed);
+    Reporter::report(output_dir, result.reports, model_name);
 
     const auto end_time = std::chrono::steady_clock::now();
     const auto duration = std::chrono::duration<double>(end_time - start_time).count();

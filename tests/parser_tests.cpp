@@ -4,7 +4,7 @@
 
 TEST_CASE("Parser reads any-resource task model", "[parser][any]")
 {
-    const auto model = flux::Parser::parse(std::filesystem::path("data") / "tests" / "any_resource.bpmn");
+    const auto model = flux::test_support::parse_file(std::filesystem::path("data") / "tests" / "any_resource.bpmn");
 
     const auto& start = flux::node(model, "Event_start");
     const auto& task = flux::node(model, "Task_service");
@@ -18,7 +18,7 @@ TEST_CASE("Parser reads any-resource task model", "[parser][any]")
 
 TEST_CASE("Parser reads all-resource task model", "[parser][all]")
 {
-    const auto model = flux::Parser::parse(std::filesystem::path("data") / "tests" / "all_resources.bpmn");
+    const auto model = flux::test_support::parse_file(std::filesystem::path("data") / "tests" / "all_resources.bpmn");
 
     const auto& task = flux::node(model, "Task_service");
     REQUIRE(task.task.has_value());
@@ -30,7 +30,7 @@ TEST_CASE("Parser reads all-resource task model", "[parser][all]")
 
 TEST_CASE("Parser reads fifo generator count", "[parser][fifo]")
 {
-    const auto model = flux::Parser::parse(std::filesystem::path("data") / "tests" / "fifo_queue.bpmn");
+    const auto model = flux::test_support::parse_file(std::filesystem::path("data") / "tests" / "fifo_queue.bpmn");
 
     const auto& start = flux::node(model, "Event_start");
     REQUIRE(start.generator.has_value());
@@ -40,7 +40,7 @@ TEST_CASE("Parser reads fifo generator count", "[parser][fifo]")
 
 TEST_CASE("Parser reads external generator times", "[parser][external]")
 {
-    const auto model = flux::Parser::parse(std::filesystem::path("data") / "tests" / "external_start.bpmn");
+    const auto model = flux::test_support::parse_file(std::filesystem::path("data") / "tests" / "external_start.bpmn");
 
     const auto& start = flux::node(model, "Event_external");
     REQUIRE(start.generator.has_value());
@@ -55,7 +55,7 @@ TEST_CASE("Parser reads external generator times", "[parser][external]")
 
 TEST_CASE("Parser reads weighted splitter model", "[parser][splitter]")
 {
-    const auto model = flux::Parser::parse(std::filesystem::path("data") / "tests" / "splitter.bpmn");
+    const auto model = flux::test_support::parse_file(std::filesystem::path("data") / "tests" / "splitter.bpmn");
 
     const auto& gateway = flux::node(model, "Gateway_splitter");
     REQUIRE(gateway.gateway_criteria == flux::GatewayCriteria::Weight);
@@ -73,7 +73,7 @@ TEST_CASE("Parser reads weighted splitter model", "[parser][splitter]")
 
 TEST_CASE("Parser reads property splitter model", "[parser][splitter-property]")
 {
-    const auto model = flux::Parser::parse(std::filesystem::path("data") / "tests" / "property_splitter.bpmn");
+    const auto model = flux::test_support::parse_file(std::filesystem::path("data") / "tests" / "property_splitter.bpmn");
 
     const auto& start = flux::node(model, "Event_property");
     REQUIRE(start.generator.has_value());
@@ -96,7 +96,7 @@ TEST_CASE("Parser reads property splitter model", "[parser][splitter-property]")
 
 TEST_CASE("Parser reads transport task model", "[parser][transport]")
 {
-    const auto model = flux::Parser::parse(std::filesystem::path("data") / "tests" / "transport.bpmn");
+    const auto model = flux::test_support::parse_file(std::filesystem::path("data") / "tests" / "transport.bpmn");
 
     const auto& task = flux::node(model, "Task_transport");
     REQUIRE(task.task.has_value());
@@ -108,7 +108,7 @@ TEST_CASE("Parser reads transport task model", "[parser][transport]")
 
 TEST_CASE("Parser reads resource lifecycle model", "[parser][resource-lifecycle]")
 {
-    const auto model = flux::Parser::parse(std::filesystem::path("data") / "tests" / "lifecycle.bpmn");
+    const auto model = flux::test_support::parse_file(std::filesystem::path("data") / "tests" / "lifecycle.bpmn");
 
     const auto& acquire_subset = flux::node(model, "Task_acquire_subset");
     const auto& release_bound = flux::node(model, "Task_release_bound");
@@ -147,7 +147,7 @@ TEST_CASE("Parser reads resource lifecycle model", "[parser][resource-lifecycle]
 
 TEST_CASE("Parser reads combine and split ratio task model", "[parser][combine-split]")
 {
-    const auto model = flux::Parser::parse(std::filesystem::path("data") / "tests" / "combine_split.bpmn");
+    const auto model = flux::test_support::parse_file(std::filesystem::path("data") / "tests" / "combine_split.bpmn");
 
     const auto& combine = flux::node(model, "Activity_combine");
     const auto& split = flux::node(model, "Activity_split");
@@ -177,7 +177,7 @@ TEST_CASE("Parser reads combine and split ratio task model", "[parser][combine-s
 
 TEST_CASE("Parser reads split quantity task model", "[parser][split-quantity]")
 {
-    const auto model = flux::Parser::parse(std::filesystem::path("data") / "tests" / "split_quantity.bpmn");
+    const auto model = flux::test_support::parse_file(std::filesystem::path("data") / "tests" / "split_quantity.bpmn");
 
     const auto& start = flux::node(model, "Event_split_quantity");
     REQUIRE(start.generator.has_value());
@@ -209,7 +209,7 @@ TEST_CASE("Parser reads split quantity task model", "[parser][split-quantity]")
 
 TEST_CASE("Parser reads quantity-aware combine restore model", "[parser][combine][quantity]")
 {
-    const auto model = flux::Parser::parse(std::filesystem::path("data") / "tests" / "combine_quantity_restore.bpmn");
+    const auto model = flux::test_support::parse_file(std::filesystem::path("data") / "tests" / "combine_quantity_restore.bpmn");
 
     const auto& combine = flux::node(model, "Activity_combine");
     REQUIRE(combine.task.has_value());
@@ -225,7 +225,7 @@ TEST_CASE("Parser reads quantity-aware combine restore model", "[parser][combine
 
 TEST_CASE("Parser reads group-ratio combine model", "[parser][combine][group-ratio]")
 {
-    const auto model = flux::Parser::parse(std::filesystem::path("data") / "tests" / "group_ratio_restore.bpmn");
+    const auto model = flux::test_support::parse_file(std::filesystem::path("data") / "tests" / "group_ratio_restore.bpmn");
 
     const auto& combine = flux::node(model, "Activity_combine");
     REQUIRE(combine.task.has_value());

@@ -5,7 +5,7 @@ import zipfile
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .manager import InstanceManager
 
@@ -14,8 +14,8 @@ manager = InstanceManager()
 
 
 class CreateInstanceRequest(BaseModel):
-    model_name: str
-    model_content: str
+    model_name: str = Field(min_length=1, max_length=128)
+    model_content: str = Field(min_length=1)
     external_files: dict[str, str] | None = None
     random_seed: int = 42
 

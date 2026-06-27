@@ -1,6 +1,7 @@
 """仿真实例生命周期管理。"""
 
 import multiprocessing as mp
+import re
 import shutil
 import uuid
 from dataclasses import dataclass
@@ -38,6 +39,7 @@ class InstanceManager:
     def create(self, model_name: str, model_content: str,
                external_files: dict[str, str] | None = None,
                random_seed: int = 42) -> InstanceState:
+        model_name = re.sub(r'[\\/:*?"<>|]', '_', model_name)
         instance_id = uuid.uuid4().hex[:12]
         instance_dir = INSTANCES_ROOT / instance_id
         ext_dir = instance_dir / "external"

@@ -10,29 +10,74 @@ def init_db() -> sqlite3.Connection:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
     conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("""
+    conn.execute("PRAGMA foreign_keys=ON")
+    conn.executescript("""
         CREATE TABLE IF NOT EXISTS instances (
             instance_id  TEXT PRIMARY KEY,
             model_name   TEXT NOT NULL,
+            created_at   TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS runs (
+            run_id       TEXT PRIMARY KEY,
+            instance_id  TEXT NOT NULL REFERENCES instances(instance_id) ON DELETE CASCADE,
+            model_name   TEXT NOT NULL,
             status       TEXT NOT NULL DEFAULT 'running',
             error        TEXT,
+            random_seed  INTEGER NOT NULL DEFAULT 42,
             created_at   TEXT NOT NULL
-        )
+        );
     """)
     conn.commit()
     return conn
 
 
-def insert(conn: sqlite3.Connection, instance_id: str, model_name: str,
-           status: str, created_at: str):
+# ---- instances ----
+
+def insert_instance(conn: sqlite3.Connection, instance_id: str, model_name: str, created_at: str):
     conn.execute(
-        "INSERT INTO instances (instance_id, model_name, status, created_at) VALUES (?, ?, ?, ?)",
-        (instance_id, model_name, status, created_at))
+        "INSERT INTO instances (instance_id, model_name, created_at) VALUES (?, ?, ?)",
+        (instance_id, model_name, created_at))
     conn.commit()
 
 
-def update(conn: sqlite3.Connection, instance_id: str,
-           status: str | None = None, error: str | None = None):
+def update_instance(conn: sqlite3.Connection, instance_id: str, model_name: str):
+    conn.execute("UPDATE instances SET model_name = ? WHERE instance_id = ?", (model_name, instance_id))
+    conn.commit()
+
+
+def delete_instance(conn: sqlite3.Connection, instance_id: str):
+    conn.execute("DELETE FROM instances WHERE instance_id = ?", (instance_id,))
+    conn.commit()
+
+
+def get_instance(conn: sqlite3.Connection, instance_id: str) -> dict | None:
+    row = conn.execute(
+        "SELECT instance_id, model_name, created_at FROM instances WHERE instance_id = ?",
+        (instance_id,)).fetchone()
+    if row is None:
+        return None
+    return {"instance_id": row[0], "model_name": row[1], "created_at": row[2]}
+
+
+def list_instances(conn: sqlite3.Connection) -> list[dict]:
+    rows = conn.execute(
+        "SELECT instance_id, model_name, created_at FROM instances ORDER BY created_at DESC"
+    ).fetchall()
+    return [{"instance_id": r[0], "model_name": r[1], "created_at": r[2]} for r in rows]
+
+
+# ---- runs ----
+
+def insert_run(conn: sqlite3.Connection, run_id: str, instance_id: str,
+               model_name: str, status: str, random_seed: int, created_at: str):
+    conn.execute(
+        "INSERT INTO runs (run_id, instance_id, model_name, status, random_seed, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        (run_id, instance_id, model_name, status, random_seed, created_at))
+    conn.commit()
+
+
+def update_run(conn: sqlite3.Connection, run_id: str,
+               status: str | None = None, error: str | None = None):
     fields = []
     params = []
     if status is not None:
@@ -43,37 +88,35 @@ def update(conn: sqlite3.Connection, instance_id: str,
         params.append(error)
     if not fields:
         return
-    params.append(instance_id)
-    conn.execute(f"UPDATE instances SET {', '.join(fields)} WHERE instance_id = ?", params)
+    params.append(run_id)
+    conn.execute(f"UPDATE runs SET {', '.join(fields)} WHERE run_id = ?", params)
     conn.commit()
 
 
-def delete(conn: sqlite3.Connection, instance_id: str):
-    conn.execute("DELETE FROM instances WHERE instance_id = ?", (instance_id,))
+def delete_run(conn: sqlite3.Connection, run_id: str):
+    conn.execute("DELETE FROM runs WHERE run_id = ?", (run_id,))
     conn.commit()
 
 
-def get(conn: sqlite3.Connection, instance_id: str) -> dict | None:
+def get_run(conn: sqlite3.Connection, run_id: str) -> dict | None:
     row = conn.execute(
-        "SELECT instance_id, model_name, status, error, created_at FROM instances WHERE instance_id = ?",
-        (instance_id,)).fetchone()
+        "SELECT run_id, instance_id, model_name, status, error, random_seed, created_at FROM runs WHERE run_id = ?",
+        (run_id,)).fetchone()
     if row is None:
         return None
-    return _row_to_dict(row)
+    return {"run_id": row[0], "instance_id": row[1], "model_name": row[2],
+            "status": row[3], "error": row[4], "random_seed": row[5], "created_at": row[6]}
 
 
-def list_all(conn: sqlite3.Connection) -> list[dict]:
-    rows = conn.execute(
-        "SELECT instance_id, model_name, status, error, created_at FROM instances ORDER BY created_at DESC"
-    ).fetchall()
-    return [_row_to_dict(r) for r in rows]
+def list_runs(conn: sqlite3.Connection, instance_id: str | None = None) -> list[dict]:
+    if instance_id:
+        rows = conn.execute(
+            "SELECT run_id, instance_id, model_name, status, error, random_seed, created_at FROM runs WHERE instance_id = ? ORDER BY created_at DESC",
+            (instance_id,)).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT run_id, instance_id, model_name, status, error, random_seed, created_at FROM runs ORDER BY created_at DESC"
+        ).fetchall()
+    return [{"run_id": r[0], "instance_id": r[1], "model_name": r[2],
+             "status": r[3], "error": r[4], "random_seed": r[5], "created_at": r[6]} for r in rows]
 
-
-def _row_to_dict(row: tuple) -> dict:
-    return {
-        "instance_id": row[0],
-        "model_name": row[1],
-        "status": row[2],
-        "error": row[3],
-        "created_at": row[4],
-    }

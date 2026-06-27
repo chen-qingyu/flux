@@ -4,35 +4,40 @@
 
 flux-api 是一个 RESTful HTTP 服务，提供 BPMN 仿真运行的多实例管理。
 
-- 所有请求/响应均为 `application/json`，CSV 下载为 `text/csv`
-- 仿真在独立子进程中运行，取消直接杀进程
-- 无持久化存储，服务重启后运行记录丢失
+- **Instance**：命名的模型身份，可多次运行（每次运行 BPMN/参数可不同）
+- **Run**：一次仿真执行，产生 5 个 CSV 报表
 
-## 端点
+所有请求/响应为 `application/json`，报表下载为 `application/zip`。
+
+## 端点总览
+
+| 方法     | 路径                                     | 说明                |
+| -------- | ---------------------------------------- | ------------------- |
+| `POST`   | `/api/instances`                         | 创建实例            |
+| `GET`    | `/api/instances`                         | 实例列表            |
+| `GET`    | `/api/instances/{id}`                    | 实例详情（含 runs） |
+| `PATCH`  | `/api/instances/{id}`                    | 重命名实例          |
+| `DELETE` | `/api/instances/{id}`                    | 删实例 + 全部 runs  |
+| `POST`   | `/api/instances/{id}/runs`               | 创建运行            |
+| `GET`    | `/api/instances/{id}/runs`               | 运行列表            |
+| `GET`    | `/api/instances/{id}/runs/{rid}`         | 运行状态            |
+| `GET`    | `/api/instances/{id}/runs/{rid}/reports` | 下载 ZIP            |
+| `POST`   | `/api/instances/{id}/runs/{rid}/cancel`  | 终止运行            |
+| `DELETE` | `/api/instances/{id}/runs/{rid}`         | 删除运行            |
+
+## Instance 端点
 
 ### `POST /api/instances`
 
-创建并启动一个仿真实例。
-
-**请求体：**
+**请求：**
 
 ```json
-{
-  "model_name": "string (必填) 模型名称，用于 CSV 文件命名",
-  "model_content": "string (必填) BPMN XML 内容",
-  "external_files": {
-    "startEventId": "csv内容"
-  },
-  "random_seed": 42
-}
+{ "model_name": "供应链模型" }
 ```
 
-| 字段             | 类型    | 必填 | 默认值 | 说明                                                       |
-| ---------------- | ------- | ---- | ------ | ---------------------------------------------------------- |
-| `model_name`     | string  | 是   | —      | CSV 文件名前缀，如 `demo` -> `demo-entity_events-{ts}.csv` |
-| `model_content`  | string  | 是   | —      | 完整的 BPMN 2.0 XML                                        |
-| `external_files` | object  | 否   | `null` | key 为 `startEvent` 的 id，value 为 CSV 内容               |
-| `random_seed`    | integer | 否   | `42`   | 随机种子，相同种子 + 相同输入 = 相同输出                   |
+| 字段         | 类型           | 必填 | 说明                       |
+| ------------ | -------------- | ---- | -------------------------- |
+| `model_name` | string (1-128) | 是   | 可重命名，路径字符自动消毒 |
 
 **响应 `201`：**
 
@@ -40,25 +45,12 @@ flux-api 是一个 RESTful HTTP 服务，提供 BPMN 仿真运行的多实例管
 {
   "instance_id": "a1b2c3d4e5f6",
   "model_name": "供应链模型",
-  "status": "running",
-  "created_at": "2026-06-27T18:30:00+00:00"
+  "created_at": "2026-06-27T18:30:00+00:00",
+  "run_count": 0
 }
 ```
 
-**错误：**
-
-| 状态码 | 说明           |
-| ------ | -------------- |
-| `400`  | 参数校验失败   |
-| `422`  | 请求体格式错误 |
-
----
-
 ### `GET /api/instances`
-
-列出所有仿真实例，按创建时间倒序。
-
-**响应 `200`：**
 
 ```json
 {
@@ -66,168 +58,150 @@ flux-api 是一个 RESTful HTTP 服务，提供 BPMN 仿真运行的多实例管
     {
       "instance_id": "a1b2c3d4e5f6",
       "model_name": "供应链模型",
-      "status": "completed",
-      "created_at": "2026-06-27T18:30:00+00:00"
+      "created_at": "...",
+      "run_count": 3
     }
   ]
 }
 ```
 
----
-
 ### `GET /api/instances/{instance_id}`
 
-获取单个实例的详细状态。
-
-**响应 `200`：**
+返回实例详情 + 所有 runs：
 
 ```json
 {
   "instance_id": "a1b2c3d4e5f6",
   "model_name": "供应链模型",
+  "created_at": "...",
+  "run_count": 2,
+  "runs": [
+    {
+      "run_id": "r1r2r3r4r5r6",
+  "instance_id": "a1b2c3d4e5f6",
+  "model_name": "供应链模型",
   "status": "completed",
-  "reports": [
-    "demo-entity_events-1782558691.csv",
-    "demo-resource_summary-1782558691.csv",
-    "demo-resource_timeline-1782558691.csv",
-    "demo-task_summary-1782558691.csv",
-    "demo-task_timeline-1782558691.csv"
-  ],
+      "random_seed": 42,
+      "reports": ["供应链模型-entity_events-{ts}.csv", ...],
   "error": null,
-  "created_at": "2026-06-27T18:30:00+00:00"
+      "created_at": "..."
+}
+  ]
 }
 ```
 
-**状态说明：**
-
-| status      | 说明                                     |
-| ----------- | ---------------------------------------- |
-| `running`   | 仿真仍在执行，`reports` 为空             |
-| `completed` | 仿真完成，`reports` 包含 5 个 CSV 文件名 |
-| `failed`    | 仿真失败，`error` 包含错误信息           |
-| `cancelled` | 已被用户取消（已删除文件）               |
-
-**错误：**
-
-| 状态码 | 说明            |
-| ------ | --------------- |
-| `404`  | instance 不存在 |
-
----
-
-### `GET /api/instances/{instance_id}/reports`
-
-下载本次仿真全部 CSV 报表的 ZIP 压缩包。
-
-**响应 `200`：** `Content-Type: application/zip`，文件名为 `{model_name}-reports.zip`。
-
-ZIP 内包含 5 个 CSV 文件：
-
-- `{model_name}-entity_events-{ts}.csv`
-- `{model_name}-resource_timeline-{ts}.csv`
-- `{model_name}-resource_summary-{ts}.csv`
-- `{model_name}-task_summary-{ts}.csv`
-- `{model_name}-task_timeline-{ts}.csv`
-
-**错误：**
-
-| 状态码 | 说明                        |
-| ------ | --------------------------- |
-| `404`  | instance 不存在或报表未生成 |
-
----
-
-### `POST /api/instances/{instance_id}/cancel`
-
-终止正在运行的仿真：杀进程、删文件。实例记录保留，状态变为 `cancelled`。已完成和已终止的实例可重复调用（幂等）。
-
-**响应 `200`：**
+### `PATCH /api/instances/{instance_id}`
 
 ```json
-{
-  "instance_id": "a1b2c3d4e5f6",
-  "status": "cancelled"
-}
+{ "model_name": "新名称" }
 ```
-
-**错误：**
-
-| 状态码 | 说明            |
-| ------ | --------------- |
-| `404`  | instance 不存在 |
-
----
 
 ### `DELETE /api/instances/{instance_id}`
 
-删除实例：终止进程、删除全部文件、移除记录。不可恢复。
+级联删除该实例下所有 runs 及文件。
 
-**响应 `200`：**
+## Run 端点
+
+### `POST /api/instances/{instance_id}/runs`
+
+**请求：**
 
 ```json
 {
-  "instance_id": "a1b2c3d4e5f6",
-  "status": "deleted"
+  "model_content": "<bpmn:definitions ...>",
+  "external_files": { "startEventId": "csv内容" },
+  "random_seed": 42
 }
 ```
 
-**错误：**
+| 字段             | 类型    | 必填 | 默认值 | 说明                             |
+| ---------------- | ------- | ---- | ------ | -------------------------------- |
+| `model_content`  | string  | 是   | —      | BPMN XML 内容                    |
+| `external_files` | object  | 否   | `null` | key=startEventId, value=CSV 内容 |
+| `random_seed`    | integer | 否   | `42`   | 随机种子                         |
 
-| 状态码 | 说明            |
-| ------ | --------------- |
-| `404`  | instance 不存在 |
+**响应 `201`：**
 
----
+```json
+{
+  "run_id": "r1r2r3r4r5r6",
+  "instance_id": "a1b2c3d4e5f6",
+  "model_name": "供应链模型",
+  "status": "running",
+  "random_seed": 42,
+  "reports": [],
+  "error": null,
+  "created_at": "..."
+}
+```
 
-## 仿真输出
+### `GET /api/instances/{instance_id}/runs`
 
-每次仿真产生 5 个 CSV 文件，命名规则 `{model_name}-{report}-{timestamp}.csv`：
+返回该实例下所有 runs，按时间倒序。
 
-| 文件                | 说明                                         | 详细定义               |
-| ------------------- | -------------------------------------------- | ---------------------- |
-| `entity_events`     | 实体事件日志，按 `(time, order)` 排序        | [output.md](output.md) |
-| `task_summary`      | 任务级统计汇总，每个任务一行                 | [output.md](output.md) |
-| `task_timeline`     | 任务状态时间线，每次状态变化一行             | [output.md](output.md) |
-| `resource_summary`  | 资源级统计汇总，每个资源一行                 | [output.md](output.md) |
-| `resource_timeline` | 资源状态时间线，包含 acquire/release/enqueue | [output.md](output.md) |
+### `GET /api/instances/{instance_id}/runs/{run_id}`
 
-## 前端集成示例
+返回单个 run 状态：
+
+| status      | 说明                                 |
+| ----------- | ------------------------------------ |
+| `running`   | 仿真执行中，`reports` 为空           |
+| `completed` | 完成，`reports` 包含 5 个 CSV 文件名 |
+| `failed`    | 失败，`error` 包含错误信息           |
+| `cancelled` | 已终止                               |
+
+### `GET /api/instances/{instance_id}/runs/{run_id}/reports`
+
+下载 ZIP，含 5 个 CSV：
+
+- `{model_name}-entity_events-{ts}.csv`
+- `{model_name}-task_summary-{ts}.csv`
+- `{model_name}-task_timeline-{ts}.csv`
+- `{model_name}-resource_summary-{ts}.csv`
+- `{model_name}-resource_timeline-{ts}.csv`
+
+### `POST /api/instances/{instance_id}/runs/{run_id}/cancel`
+
+终止运行。杀进程、删文件，保留记录。
+
+### `DELETE /api/instances/{instance_id}/runs/{run_id}`
+
+删除运行。杀进程、删文件、移除记录。
+
+## 前端集成
 
 ```javascript
-// 1. 上传模型并启动仿真
+// 1. 创建实例
 const { instance_id } = await fetch("/api/instances", {
   method: "POST",
   headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({
-    model_name: "供应链模型-v2",
-    model_content: bpmnXml,
-    random_seed: 42,
-  }),
+  body: JSON.stringify({ model_name: "供应链模型" }),
 }).then((r) => r.json());
 
-// 2. 轮询直到完成
+// 2. 创建运行
+const { run_id } = await fetch(`/api/instances/${instance_id}/runs`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ model_content: bpmnXml, random_seed: 42 }),
+}).then((r) => r.json());
+
+// 3. 轮询
 let status = "running";
 while (status === "running") {
   await new Promise((r) => setTimeout(r, 1000));
-  ({ status, reports } = await fetch(`/api/instances/${instance_id}`).then(
-    (r) => r.json(),
-  ));
+  ({ status } = await fetch(
+    `/api/instances/${instance_id}/runs/${run_id}`,
+  ).then((r) => r.json()));
 }
 
-// 3. 下载全部报表 (ZIP)
-const zip = await fetch(`/api/instances/${instance_id}/reports`).then((r) =>
-  r.blob(),
-);
-// 前端解压 ZIP 或直接下载给用户
-
-// 4. (可选) 终止或删除
-await fetch(`/api/instances/${instance_id}/cancel`, { method: "POST" });
-await fetch(`/api/instances/${instance_id}`, { method: "DELETE" });
+// 4. 下载 ZIP
+const zip = await fetch(
+  `/api/instances/${instance_id}/runs/${run_id}/reports`,
+).then((r) => r.blob());
 ```
 
-## 启动服务
+## 启动
 
 ```bash
-pip install fastapi uvicorn
-python -m uvicorn server.main:app --host 0.0.0.0 --port 8000
+python -m uvicorn server.main:app --host 127.0.0.1 --port 8000
 ```

@@ -10,7 +10,7 @@ if is_plat("linux") then
     add_requireconfs("pybind11.python", {override = true, configs = {headeronly = true}})
 end
 
-target("flux-lib")
+target("core")
     set_kind("static")
     add_packages("entt", "pugixml", "spdlog", "magic_enum", "csvparser", {public = true})
     add_files("src/core/*.cpp")
@@ -22,22 +22,22 @@ target("flux-lib")
         add_cxflags("-fPIC")
     end
 
-target("flux")
+target("cli")
     set_kind("binary")
     set_rundir(".")
     add_packages("argparse")
-    add_deps("flux-lib")
+    add_deps("core")
     add_files("src/main.cpp")
 
-target("_native")
+target("lib")
     add_rules("python.module")
-    add_deps("flux-lib")
+    add_deps("core")
     add_packages("pybind11")
     add_files("src/python_module.cpp")
 
 target("test")
     set_kind("binary")
     set_rundir(".")
-    add_deps("flux-lib")
+    add_deps("core")
     add_packages("catch2")
     add_files("tests/*.cpp")

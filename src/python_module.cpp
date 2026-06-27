@@ -4,7 +4,7 @@
 
 namespace py = pybind11;
 
-PYBIND11_MODULE(_native, module)
+PYBIND11_MODULE(lib, module)
 {
     module.doc() = "Python SDK for the flux simulator engine.";
     module.def(

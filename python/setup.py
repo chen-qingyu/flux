@@ -18,11 +18,11 @@ def _project_root() -> Path:
 class build_ext(_build_ext):
     def run(self):
         root = _project_root()
-        subprocess.run(["xmake", "build", "_native"], cwd=root, check=True)
-        artifacts = sorted(root.glob("build/**/_native*.pyd")) + sorted(root.glob("build/**/_native*.so"))
+        subprocess.run(["xmake", "build", "lib"], cwd=root, check=True)
+        artifacts = sorted(root.glob("build/**/lib*.pyd")) + sorted(root.glob("build/**/lib*.so"))
         if not artifacts:
             raise RuntimeError("Unable to locate native flux module.")
-        destination = Path(self.get_ext_fullpath("flux._native"))
+        destination = Path(self.get_ext_fullpath("flux.lib"))
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(artifacts[-1], destination)
 
@@ -41,6 +41,6 @@ class sdist(_sdist):
 
 
 setup(
-    ext_modules=[Extension("flux._native", sources=[])],
+    ext_modules=[Extension("flux.lib", sources=[])],
     cmdclass={"build_ext": build_ext, "sdist": sdist},
 )

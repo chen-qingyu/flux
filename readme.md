@@ -7,7 +7,7 @@ Flux 寓意为供应链的流动，同时暗示数据在内存中的流动与事
 ## 架构概览
 
 ```
-BPMN File -> Parser -> Model (ECS Graph) -> Engine (DOD + EnTT) -> Reporter -> Output
+BPMN Content -> Parser -> Model (ECS Graph) -> Engine (DOD + EnTT) -> Reporter -> CSV
 ```
 
 ## 支持范围
@@ -53,16 +53,15 @@ xmake build
 
 ### 运行
 
-`xmake run flux <file> [--seed <seed>]`
+`xmake run cli <file> [--seed <seed>] [--output <dir>]`
 
-- `file`: 输入文件，位置参数，必填
-- `--seed`: 随机种子，可省略，默认是 `42`
-
-以下两条命令等价：
+- `file`: BPMN 文件路径，必填
+- `--seed`: 随机种子，默认 `42`
+- `--output`: CSV 输出目录，默认 `output`
 
 ```bash
-xmake run flux data/demo.bpmn
-xmake run flux data/demo.bpmn --seed 42
+xmake run cli data/demo.bpmn
+xmake run cli data/demo.bpmn --seed 42 --output results
 ```
 
 ### Python SDK
@@ -83,15 +82,19 @@ pip install python/dist/xxx.whl
 pip install python/dist/xxx.tar.gz
 ```
 
-包名是 `flux`，支持 Python `3.9+`，提供 `flux.run(file, seed=42)`
+包名是 `flux`，提供 `flux.run(model_name, model_content, output_dir="output", external_dir="data/external", random_seed=42)`
 
-它的行为和 CLI 一致：读取 BPMN，执行仿真，并把 CSV 写到 `output/`。
+- `model_name`: 模型名称，用于 CSV 文件命名
+- `model_content`: BPMN XML 内容字符串
+- `output_dir`: CSV 输出目录，默认 `output`
+- `external_dir`: 外部 CSV 文件目录，默认 `data/external`
+- `random_seed`: 随机种子，默认 `42`
 
 可以直接运行根目录脚本：
 
 ```bash
 python run.py data/demo.bpmn
-python run.py data/demo.bpmn --seed 42
+python run.py data/demo.bpmn --seed 42 --output results
 ```
 
 ### 调试
@@ -140,7 +143,7 @@ src/
   main.cpp          CLI 入口
   python_module.cpp Python 绑定入口
   core/
-    app.hpp/.cpp       顶层调度
+    app.hpp/.cpp       统一入口
     model.hpp          数据模型
     parser.hpp/.cpp    输入解析
     engine.hpp/.cpp    仿真引擎

@@ -137,9 +137,9 @@ ZIP 内包含 5 个 CSV 文件：
 
 ---
 
-### `DELETE /api/instances/{instance_id}`
+### `POST /api/instances/{instance_id}/cancel`
 
-取消运行中的仿真并删除所有相关文件。已完成的实例同样可以删除。
+终止正在运行的仿真：杀进程、删文件。实例记录保留，状态变为 `cancelled`。已完成和已终止的实例可重复调用（幂等）。
 
 **响应 `200`：**
 
@@ -147,6 +147,27 @@ ZIP 内包含 5 个 CSV 文件：
 {
   "instance_id": "a1b2c3d4e5f6",
   "status": "cancelled"
+}
+```
+
+**错误：**
+
+| 状态码 | 说明            |
+| ------ | --------------- |
+| `404`  | instance 不存在 |
+
+---
+
+### `DELETE /api/instances/{instance_id}`
+
+删除实例：终止进程、删除全部文件、移除记录。不可恢复。
+
+**响应 `200`：**
+
+```json
+{
+  "instance_id": "a1b2c3d4e5f6",
+  "status": "deleted"
 }
 ```
 
@@ -199,7 +220,8 @@ const zip = await fetch(`/api/instances/${instance_id}/reports`).then((r) =>
 );
 // 前端解压 ZIP 或直接下载给用户
 
-// 4. (可选) 清理
+// 4. (可选) 终止或删除
+await fetch(`/api/instances/${instance_id}/cancel`, { method: "POST" });
 await fetch(`/api/instances/${instance_id}`, { method: "DELETE" });
 ```
 

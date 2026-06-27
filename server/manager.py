@@ -79,16 +79,29 @@ class InstanceManager:
         return sorted(self._instances.values(),
                       key=lambda s: s.created_at, reverse=True)
 
-    def cancel(self, instance_id: str) -> bool:
+    def stop(self, instance_id: str) -> InstanceState | None:
+        """终止仿真：杀进程、删文件，保留状态记录。"""
         state = self._instances.get(instance_id)
         if state is None:
-            return False
+            return None
         if state.process and state.process.is_alive():
             state.process.terminate()
             state.process.join(timeout=5)
         state.status = "cancelled"
         shutil.rmtree(state.instance_dir, ignore_errors=True)
-        return True
+        return state
+
+    def delete(self, instance_id: str) -> InstanceState | None:
+        """删除实例：杀进程、删文件、移除内存记录。"""
+        state = self._instances.get(instance_id)
+        if state is None:
+            return None
+        if state.process and state.process.is_alive():
+            state.process.terminate()
+            state.process.join(timeout=5)
+        shutil.rmtree(state.instance_dir, ignore_errors=True)
+        del self._instances[instance_id]
+        return state
 
     def _refresh(self, state: InstanceState):
         if state.status != "running":

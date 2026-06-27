@@ -86,8 +86,20 @@ def get_reports(instance_id: str):
     )
 
 
-@app.delete("/api/instances/{instance_id}")
+@app.post("/api/instances/{instance_id}/cancel")
 def cancel_instance(instance_id: str):
-    if not manager.cancel(instance_id):
+    state = manager.stop(instance_id)
+    if state is None:
         raise HTTPException(404, "instance not found")
-    return {"instance_id": instance_id, "status": "cancelled"}
+    return {
+        "instance_id": state.instance_id,
+        "status": state.status,
+    }
+
+
+@app.delete("/api/instances/{instance_id}")
+def delete_instance(instance_id: str):
+    state = manager.delete(instance_id)
+    if state is None:
+        raise HTTPException(404, "instance not found")
+    return {"instance_id": state.instance_id, "status": "deleted"}

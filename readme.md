@@ -37,9 +37,8 @@ BPMN Content -> Parser -> Model (ECS Graph) -> Engine (DOD + EnTT) -> Reporter -
 
 ### 环境要求
 
-1. C++ 编译器，需要支持 C++20
-2. XMake 3.0+
-3. Python 3.9+（仅打包安装 Python SDK 时需要）
+1. C++ 编译器，需要支持 [C++20](https://en.cppreference.com/cpp/20) 标准
+2. [XMake](https://github.com/xmake-io/xmake) 3.0+
 
 ### 构建
 
@@ -53,56 +52,45 @@ xmake build
 
 ### 运行
 
-`xmake run cli <file> [--seed <seed>] [--output <dir>]`
+提供三种使用方式。
 
-- `file`: BPMN 文件路径，必填
-- `--seed`: 随机种子，默认 `42`
-- `--output`: CSV 输出目录，默认 `output`
+#### CLI
+
+通过命令行直接运行仿真。
 
 ```bash
-xmake run cli data/demo.bpmn
-xmake run cli data/demo.bpmn --seed 42 --output results
+xmake run cli data/demo.bpmn --seed 42 --output output
 ```
 
-### Python SDK
+输入文件路径必填；`--seed` 默认 `42`；`--output` 默认 `output`。
 
-可以作为 Python 包安装，供用户在 Python 环境中调用。
+#### SDK
 
-打包 Python SDK：
-
-```bash
-python -m build python
-```
-
-打包后会在 `python/dist/` 目录生成 `.whl` 和 `.tar.gz` 文件。
-若在同一台机器上打包和安装，推荐 `.whl`；如果需要跨机器安装，推荐 `.tar.gz`：
+需要 Python 3.9+。作为 Python 包供上层代码调用。
 
 ```bash
-pip install python/dist/xxx.whl
 pip install python/dist/xxx.tar.gz
 ```
 
-包名是 `flux`，提供 `flux.run(model_name, model_content, output_dir="output", external_dir="data/external", random_seed=42)`
-
-- `model_name`: 模型名称，用于 CSV 文件命名
-- `model_content`: BPMN XML 内容字符串
-- `output_dir`: CSV 输出目录，默认 `output`
-- `external_dir`: 外部 CSV 文件目录，默认 `data/external`
-- `random_seed`: 随机种子，默认 `42`
-
-可以直接运行根目录脚本：
-
-```bash
-python run.py data/demo.bpmn
-python run.py data/demo.bpmn --seed 42 --output results
+```python
+import flux
+flux.run("demo", bpmn_string)
 ```
 
-### 调试
+也提供命令行脚本：`python run.py data/demo.bpmn`
 
-仓库内提供 VS Code 调试配置： `.vscode/tasks.json` 和 `.vscode/launch.json`。
+详见 [python/README.md](python/README.md)
 
-- `debug flux`：启动主程序调试，启动时会提示输入 BPMN 文件路径，默认值是 `data/demo.bpmn`。
-- `debug test`：启动测试程序调试。
+#### API
+
+通过 HTTP 服务远程调用仿真。
+
+```bash
+pip install fastapi uvicorn
+python -m uvicorn server.main:app --host 127.0.0.1 --port 8000
+```
+
+详见 [docs/api.md](docs/api.md)
 
 ## 输入输出
 

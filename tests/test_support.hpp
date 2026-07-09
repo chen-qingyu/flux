@@ -9,10 +9,10 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-#include "../src/core/engine.hpp"
-#include "../src/core/parser.hpp"
-#include "../src/core/reporter.hpp"
-#include "../src/core/tools.hpp"
+#include "core/engine.hpp"
+#include "core/parser.hpp"
+#include "core/reporter.hpp"
+#include "core/tools.hpp"
 
 namespace flux::test_support
 {

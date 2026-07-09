@@ -24,6 +24,6 @@ IncludeCategories:
     Priority: 1
   - Regex: '^<([a-zA-Z0-9_-]+/)*[a-zA-Z0-9_-]+\.(h|hpp)>'
     Priority: 2
-  - Regex: '^"[a-zA-Z0-9_-]+\.(h|hpp)"'
+  - Regex: '^"([a-zA-Z0-9_.-]+/)*[a-zA-Z0-9_-]+\.(h|hpp)"'
     Priority: 3
 InsertNewlineAtEOF: true

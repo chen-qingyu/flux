@@ -3,6 +3,7 @@
 import io
 import zipfile
 from contextlib import asynccontextmanager
+from urllib.parse import quote
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
@@ -123,6 +124,7 @@ def get_reports(instance_id: str, run_id: str):
 
     ts = csv_files[0].stem.rsplit("-", 1)[-1]
     filename = f"{instance.model_name}-reports-{ts}.zip"
+    encoded = quote(filename)
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -133,7 +135,7 @@ def get_reports(instance_id: str, run_id: str):
     return StreamingResponse(
         buf,
         media_type="application/zip",
-        headers={"Content-Disposition": f"attachment; filename={filename}"},
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{encoded}"},
     )
 
 

@@ -32,19 +32,19 @@ flux-api 是一个 RESTful HTTP 服务，提供 BPMN 仿真运行的多实例管
 **请求：**
 
 ```json
-{ "model_name": "供应链模型" }
+{ "instance_name": "供应链模型" }
 ```
 
-| 字段         | 类型           | 必填 | 说明                       |
-| ------------ | -------------- | ---- | -------------------------- |
-| `model_name` | string (1-128) | 是   | 可重命名，路径字符自动消毒 |
+| 字段            | 类型           | 必填 | 说明                       |
+| --------------- | -------------- | ---- | -------------------------- |
+| `instance_name` | string (1-128) | 是   | 可重命名，路径字符自动消毒 |
 
 **响应 `201`：**
 
 ```json
 {
   "instance_id": "a1b2c3d4e5f6",
-  "model_name": "供应链模型",
+  "instance_name": "供应链模型",
   "created_at": "2026-06-27T18:30:00+00:00",
   "run_count": 0
 }
@@ -57,7 +57,7 @@ flux-api 是一个 RESTful HTTP 服务，提供 BPMN 仿真运行的多实例管
   "instances": [
     {
       "instance_id": "a1b2c3d4e5f6",
-      "model_name": "供应链模型",
+      "instance_name": "供应链模型",
       "created_at": "...",
       "run_count": 3
     }
@@ -72,14 +72,14 @@ flux-api 是一个 RESTful HTTP 服务，提供 BPMN 仿真运行的多实例管
 ```json
 {
   "instance_id": "a1b2c3d4e5f6",
-  "model_name": "供应链模型",
+  "instance_name": "供应链模型",
   "created_at": "...",
   "run_count": 2,
   "runs": [
     {
       "run_id": "r1r2r3r4r5r6",
   "instance_id": "a1b2c3d4e5f6",
-  "model_name": "供应链模型",
+  "instance_name": "供应链模型",
   "status": "completed",
       "random_seed": 42,
       "reports": ["供应链模型-entity_events-{ts}.csv", ...],
@@ -93,7 +93,7 @@ flux-api 是一个 RESTful HTTP 服务，提供 BPMN 仿真运行的多实例管
 ### `PATCH /api/instances/{instance_id}`
 
 ```json
-{ "model_name": "新名称" }
+{ "instance_name": "新名称" }
 ```
 
 ### `DELETE /api/instances/{instance_id}`
@@ -126,7 +126,7 @@ flux-api 是一个 RESTful HTTP 服务，提供 BPMN 仿真运行的多实例管
 {
   "run_id": "r1r2r3r4r5r6",
   "instance_id": "a1b2c3d4e5f6",
-  "model_name": "供应链模型",
+  "instance_name": "供应链模型",
   "status": "running",
   "random_seed": 42,
   "reports": [],
@@ -152,13 +152,13 @@ flux-api 是一个 RESTful HTTP 服务，提供 BPMN 仿真运行的多实例管
 
 ### `GET /api/instances/{instance_id}/runs/{run_id}/reports`
 
-下载 ZIP `{model_name}-reports-{ts}.zip`，含 5 个 CSV：
+下载 ZIP `{instance_name}-reports-{ts}.zip`，含 5 个 CSV：
 
-- `{model_name}-entity_events-{ts}.csv`
-- `{model_name}-task_summary-{ts}.csv`
-- `{model_name}-task_timeline-{ts}.csv`
-- `{model_name}-resource_summary-{ts}.csv`
-- `{model_name}-resource_timeline-{ts}.csv`
+- `{instance_name}-entity_events-{ts}.csv`
+- `{instance_name}-task_summary-{ts}.csv`
+- `{instance_name}-task_timeline-{ts}.csv`
+- `{instance_name}-resource_summary-{ts}.csv`
+- `{instance_name}-resource_timeline-{ts}.csv`
 
 仅 `completed` 状态的 run 可下载，否则返回 `409`。
 
@@ -177,7 +177,7 @@ flux-api 是一个 RESTful HTTP 服务，提供 BPMN 仿真运行的多实例管
 const { instance_id } = await fetch("/api/instances", {
   method: "POST",
   headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ model_name: "供应链模型" }),
+  body: JSON.stringify({ instance_name: "供应链模型" }),
 }).then((r) => r.json());
 
 // 2. 创建运行

@@ -32,11 +32,11 @@ class RunState:
             return []
         return sorted(p.name for p in out.glob("*.csv"))
 
-    def to_dict(self, model_name: str = "") -> dict:
+    def to_dict(self, instance_name: str = "") -> dict:
         return {
             "run_id": self.run_id,
             "instance_id": self.instance_id,
-            "model_name": model_name,
+            "instance_name": instance_name,
             "status": self.status,
             "random_seed": self.random_seed,
             "reports": self.reports() if self.status == "completed" else [],
@@ -48,19 +48,19 @@ class RunState:
 @dataclass
 class InstanceState:
     instance_id: str
-    model_name: str
+    instance_name: str
     created_at: str
     runs: dict[str, RunState] = field(default_factory=dict)
 
     def to_dict(self, include_runs: bool = False) -> dict:
         d = {
             "instance_id": self.instance_id,
-            "model_name": self.model_name,
+            "instance_name": self.instance_name,
             "created_at": self.created_at,
             "run_count": len(self.runs),
         }
         if include_runs:
-            d["runs"] = [r.to_dict(self.model_name) for r in sorted(
+            d["runs"] = [r.to_dict(self.instance_name) for r in sorted(
                 self.runs.values(), key=lambda r: r.created_at, reverse=True)]
         return d
 
@@ -74,14 +74,14 @@ class InstanceManager:
 
     # instances
 
-    def create_instance(self, model_name: str) -> InstanceState:
-        model_name = re.sub(r'[\\/:*?"<>|]', '_', model_name)
+    def create_instance(self, instance_name: str) -> InstanceState:
+        instance_name = re.sub(r'[\\/:*?"<>|]', '_', instance_name)
         instance_id = uuid.uuid4().hex[:12]
         created_at = datetime.now(timezone.utc).isoformat()
         (INSTANCES_ROOT / instance_id).mkdir(parents=True)
-        db.insert_instance(self._conn, instance_id, model_name, created_at)
+        db.insert_instance(self._conn, instance_id, instance_name, created_at)
 
-        state = InstanceState(instance_id=instance_id, model_name=model_name, created_at=created_at)
+        state = InstanceState(instance_id=instance_id, instance_name=instance_name, created_at=created_at)
         self._instances[instance_id] = state
         return state
 
@@ -91,13 +91,13 @@ class InstanceManager:
     def list_instances(self) -> list[InstanceState]:
         return sorted(self._instances.values(), key=lambda s: s.created_at, reverse=True)
 
-    def rename_instance(self, instance_id: str, model_name: str) -> InstanceState | None:
+    def rename_instance(self, instance_id: str, instance_name: str) -> InstanceState | None:
         state = self._instances.get(instance_id)
         if state is None:
             return None
-        model_name = re.sub(r'[\\/:*?"<>|]', '_', model_name)
-        state.model_name = model_name
-        db.update_instance(self._conn, instance_id, model_name)
+        instance_name = re.sub(r'[\\/:*?"<>|]', '_', instance_name)
+        state.instance_name = instance_name
+        db.update_instance(self._conn, instance_id, instance_name)
         return state
 
     def delete_instance(self, instance_id: str) -> InstanceState | None:
@@ -141,7 +141,7 @@ class InstanceManager:
         parent_conn, child_conn = mp.Pipe()
         p = mp.Process(
             target=_run_worker,
-            args=(instance.model_name, model_content,
+            args=(instance.instance_name, model_content,
                   str(ext_dir), str(out_dir), random_seed, child_conn)
         )
         p.start()
@@ -216,7 +216,7 @@ class InstanceManager:
         for row in db.list_instances(self._conn):
             inst = InstanceState(
                 instance_id=row["instance_id"],
-                model_name=row["model_name"],
+                instance_name=row["instance_name"],
                 created_at=row["created_at"],
             )
             self._instances[inst.instance_id] = inst
@@ -253,12 +253,12 @@ class InstanceManager:
                 db.update_run(self._conn, state.run_id, status=state.status, error=state.error)
 
 
-def _run_worker(model_name: str, model_content: str,
+def _run_worker(instance_name: str, model_content: str,
                 external_dir: str, output_dir: str, random_seed: int, conn):
     """模块级函数，确保 multiprocessing 可 pickle。"""
     try:
         import flux
-        flux.run(model_name, model_content, output_dir, external_dir, random_seed)
+        flux.run(instance_name, model_content, output_dir, external_dir, random_seed)
         conn.send(("completed", ""))
     except Exception as e:
         conn.send(("failed", str(e)))

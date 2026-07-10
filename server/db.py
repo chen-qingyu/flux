@@ -14,7 +14,7 @@ def init_db() -> sqlite3.Connection:
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS instances (
             instance_id  TEXT PRIMARY KEY,
-            model_name   TEXT NOT NULL,
+            instance_name TEXT NOT NULL,
             created_at   TEXT NOT NULL
         );
         CREATE TABLE IF NOT EXISTS runs (
@@ -31,15 +31,15 @@ def init_db() -> sqlite3.Connection:
 
 # instances
 
-def insert_instance(conn: sqlite3.Connection, instance_id: str, model_name: str, created_at: str):
+def insert_instance(conn: sqlite3.Connection, instance_id: str, instance_name: str, created_at: str):
     conn.execute(
-        "INSERT INTO instances (instance_id, model_name, created_at) VALUES (?, ?, ?)",
-        (instance_id, model_name, created_at))
+        "INSERT INTO instances (instance_id, instance_name, created_at) VALUES (?, ?, ?)",
+        (instance_id, instance_name, created_at))
     conn.commit()
 
 
-def update_instance(conn: sqlite3.Connection, instance_id: str, model_name: str):
-    conn.execute("UPDATE instances SET model_name = ? WHERE instance_id = ?", (model_name, instance_id))
+def update_instance(conn: sqlite3.Connection, instance_id: str, instance_name: str):
+    conn.execute("UPDATE instances SET instance_name = ? WHERE instance_id = ?", (instance_name, instance_id))
     conn.commit()
 
 
@@ -50,9 +50,9 @@ def delete_instance(conn: sqlite3.Connection, instance_id: str):
 
 def list_instances(conn: sqlite3.Connection) -> list[dict]:
     rows = conn.execute(
-        "SELECT instance_id, model_name, created_at FROM instances ORDER BY created_at DESC"
+        "SELECT instance_id, instance_name, created_at FROM instances ORDER BY created_at DESC"
     ).fetchall()
-    return [{"instance_id": r[0], "model_name": r[1], "created_at": r[2]} for r in rows]
+    return [{"instance_id": r[0], "instance_name": r[1], "created_at": r[2]} for r in rows]
 
 
 # runs

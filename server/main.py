@@ -25,7 +25,7 @@ manager = InstanceManager()
 # request models
 
 class CreateInstanceRequest(BaseModel):
-    model_name: str = Field(min_length=1, max_length=128)
+    instance_name: str = Field(min_length=1, max_length=128)
 
 
 class CreateRunRequest(BaseModel):
@@ -38,7 +38,7 @@ class CreateRunRequest(BaseModel):
 
 @app.post("/api/instances", status_code=201)
 def create_instance(req: CreateInstanceRequest):
-    state = manager.create_instance(req.model_name)
+    state = manager.create_instance(req.instance_name)
     return state.to_dict()
 
 
@@ -57,7 +57,7 @@ def get_instance(instance_id: str):
 
 @app.patch("/api/instances/{instance_id}")
 def rename_instance(instance_id: str, req: CreateInstanceRequest):
-    state = manager.rename_instance(instance_id, req.model_name)
+    state = manager.rename_instance(instance_id, req.instance_name)
     if state is None:
         raise HTTPException(404, "instance not found")
     return state.to_dict()
@@ -94,20 +94,20 @@ def create_run(instance_id: str, req: CreateRunRequest):
     if state is None:
         raise HTTPException(404, "instance not found")
     instance = _get_instance_or_404(instance_id)
-    return state.to_dict(instance.model_name)
+    return state.to_dict(instance.instance_name)
 
 
 @app.get("/api/instances/{instance_id}/runs")
 def list_runs(instance_id: str):
     instance = _get_instance_or_404(instance_id)
-    return {"runs": [r.to_dict(instance.model_name) for r in manager.list_runs(instance_id)]}
+    return {"runs": [r.to_dict(instance.instance_name) for r in manager.list_runs(instance_id)]}
 
 
 @app.get("/api/instances/{instance_id}/runs/{run_id}")
 def get_run(instance_id: str, run_id: str):
     state = _get_run_or_404(instance_id, run_id)
     instance = _get_instance_or_404(instance_id)
-    return state.to_dict(instance.model_name)
+    return state.to_dict(instance.instance_name)
 
 
 @app.get("/api/instances/{instance_id}/runs/{run_id}/reports")
@@ -123,7 +123,7 @@ def get_reports(instance_id: str, run_id: str):
     instance = _get_instance_or_404(state.instance_id)
 
     ts = csv_files[0].stem.rsplit("-", 1)[-1]
-    filename = f"{instance.model_name}-reports-{ts}.zip"
+    filename = f"{instance.instance_name}-reports-{ts}.zip"
     encoded = quote(filename)
 
     buf = io.BytesIO()

@@ -7,6 +7,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from . import db
 
@@ -23,6 +24,7 @@ class RunState:
     run_dir: Path
     created_at: str
     error: str | None = None
+    pipe: Any = None
 
     def reports(self) -> list[str]:
         out = self.run_dir / "output"
@@ -136,17 +138,18 @@ class InstanceManager:
 
         db.insert_run(self._conn, run_id, instance_id, "running", random_seed, created_at)
 
+        parent_conn, child_conn = mp.Pipe()
         p = mp.Process(
             target=_run_worker,
-            args=(str(run_dir), instance.model_name, model_content,
-                  str(ext_dir), str(out_dir), random_seed)
+            args=(instance.model_name, model_content,
+                  str(ext_dir), str(out_dir), random_seed, child_conn)
         )
         p.start()
 
         state = RunState(
             run_id=run_id, instance_id=instance_id,
             status="running", random_seed=random_seed, process=p,
-            run_dir=run_dir, created_at=created_at,
+            pipe=parent_conn, run_dir=run_dir, created_at=created_at,
         )
         instance.runs[run_id] = state
         self._runs[run_id] = state
@@ -187,6 +190,9 @@ class InstanceManager:
     # internal
 
     def _kill_run(self, state: RunState):
+        if state.pipe:
+            state.pipe.close()
+            state.pipe = None
         if state.process and state.process.is_alive():
             state.process.terminate()
             state.process.join(timeout=5)
@@ -194,16 +200,13 @@ class InstanceManager:
     def _refresh_run(self, state: RunState):
         if state.status != "running":
             return
-        status_file = state.run_dir / "_status"
-        if status_file.exists():
-            text = status_file.read_text().strip()
-            if text == "completed":
-                state.status = "completed"
-                db.update_run(self._conn, state.run_id, status="completed")
-            elif text.startswith("failed:"):
-                state.status = "failed"
-                state.error = text.removeprefix("failed:")
-                db.update_run(self._conn, state.run_id, status="failed", error=state.error)
+        if state.pipe and state.pipe.poll():
+            status, error = state.pipe.recv()
+            state.status = status
+            state.error = error
+            state.pipe.close()
+            state.pipe = None
+            db.update_run(self._conn, state.run_id, status=status, error=error)
         elif state.process and not state.process.is_alive():
             state.status = "failed"
             state.error = f"exit code {state.process.exitcode}"
@@ -241,13 +244,14 @@ class InstanceManager:
             self._runs[state.run_id] = state
 
 
-def _run_worker(run_dir: str, model_name: str, model_content: str,
-                external_dir: str, output_dir: str, random_seed: int):
+def _run_worker(model_name: str, model_content: str,
+                external_dir: str, output_dir: str, random_seed: int, conn):
     """模块级函数，确保 multiprocessing 可 pickle。"""
-    status_file = Path(run_dir) / "_status"
     try:
         import flux
         flux.run(model_name, model_content, output_dir, external_dir, random_seed)
-        status_file.write_text("completed")
+        conn.send(("completed", ""))
     except Exception as e:
-        status_file.write_text(f"failed:{e}")
+        conn.send(("failed", str(e)))
+    finally:
+        conn.close()

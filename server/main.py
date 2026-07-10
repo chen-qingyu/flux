@@ -77,28 +77,38 @@ def create_run(instance_id: str, req: CreateRunRequest):
                                req.external_files, req.random_seed)
     if state is None:
         raise HTTPException(404, "instance not found")
-    return state.to_dict()
+    instance = manager.get_instance(instance_id)
+    assert instance is not None
+    return state.to_dict(instance.model_name)
 
 
 @app.get("/api/instances/{instance_id}/runs")
 def list_runs(instance_id: str):
-    if manager.get_instance(instance_id) is None:
+    instance = manager.get_instance(instance_id)
+    if instance is None:
         raise HTTPException(404, "instance not found")
-    return {"runs": [r.to_dict() for r in manager.list_runs(instance_id)]}
+    return {"runs": [r.to_dict(instance.model_name) for r in manager.list_runs(instance_id)]}
 
 
 @app.get("/api/instances/{instance_id}/runs/{run_id}")
 def get_run(instance_id: str, run_id: str):
-    return _get_run_or_404(instance_id, run_id).to_dict()
+    state = _get_run_or_404(instance_id, run_id)
+    instance = manager.get_instance(instance_id)
+    assert instance is not None
+    return state.to_dict(instance.model_name)
 
 
 @app.get("/api/instances/{instance_id}/runs/{run_id}/reports")
 def get_reports(instance_id: str, run_id: str):
     state = _get_run_or_404(instance_id, run_id)
+    if state.status != "completed":
+        raise HTTPException(409, f"run is {state.status}, reports not ready")
     output_dir = state.run_dir / "output"
     if not output_dir.exists():
         raise HTTPException(404, "reports not found")
 
+    instance = manager.get_instance(state.instance_id)
+    assert instance is not None
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         for path in sorted(output_dir.glob("*.csv")):
@@ -108,13 +118,15 @@ def get_reports(instance_id: str, run_id: str):
     return StreamingResponse(
         buf,
         media_type="application/zip",
-        headers={"Content-Disposition": f"attachment; filename={state.model_name}-reports.zip"},
+        headers={"Content-Disposition": f"attachment; filename={instance.model_name}-reports.zip"},
     )
 
 
 @app.post("/api/instances/{instance_id}/runs/{run_id}/cancel")
 def cancel_run(instance_id: str, run_id: str):
     state = _get_run_or_404(instance_id, run_id)
+    if state.status != "running":
+        raise HTTPException(409, f"run is {state.status}, cannot cancel")
     state = manager.stop_run(state)
     return {"run_id": state.run_id, "status": state.status}
 

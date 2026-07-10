@@ -160,9 +160,11 @@ flux-api 是一个 RESTful HTTP 服务，提供 BPMN 仿真运行的多实例管
 - `{model_name}-resource_summary-{ts}.csv`
 - `{model_name}-resource_timeline-{ts}.csv`
 
+仅 `completed` 状态的 run 可下载，否则返回 `409`。
+
 ### `POST /api/instances/{instance_id}/runs/{run_id}/cancel`
 
-终止运行。杀进程、删文件，保留记录。
+终止运行。杀进程、删文件，保留记录。仅 `running` 状态的 run 可取消，否则返回 `409`。
 
 ### `DELETE /api/instances/{instance_id}/runs/{run_id}`
 

@@ -17,7 +17,6 @@ INSTANCES_ROOT = Path("instances")
 class RunState:
     run_id: str
     instance_id: str
-    model_name: str
     status: str          # running | completed | failed | cancelled
     random_seed: int
     process: mp.Process | None
@@ -31,11 +30,11 @@ class RunState:
             return []
         return sorted(p.name for p in out.glob("*.csv"))
 
-    def to_dict(self) -> dict:
+    def to_dict(self, model_name: str = "") -> dict:
         return {
             "run_id": self.run_id,
             "instance_id": self.instance_id,
-            "model_name": self.model_name,
+            "model_name": model_name,
             "status": self.status,
             "random_seed": self.random_seed,
             "reports": self.reports() if self.status == "completed" else [],
@@ -59,7 +58,7 @@ class InstanceState:
             "run_count": len(self.runs),
         }
         if include_runs:
-            d["runs"] = [r.to_dict() for r in sorted(
+            d["runs"] = [r.to_dict(self.model_name) for r in sorted(
                 self.runs.values(), key=lambda r: r.created_at, reverse=True)]
         return d
 
@@ -108,7 +107,7 @@ class InstanceManager:
         shutil.rmtree(INSTANCES_ROOT / instance_id, ignore_errors=True)
         db.delete_instance(self._conn, instance_id)
         for run in state.runs.values():
-            del self._runs[run.run_id]
+            self._runs.pop(run.run_id, None)
         del self._instances[instance_id]
         return state
 
@@ -135,7 +134,7 @@ class InstanceManager:
             for filename, csv_content in external_files.items():
                 (ext_dir / f"{filename}.csv").write_text(csv_content, encoding="utf-8")
 
-        db.insert_run(self._conn, run_id, instance_id, instance.model_name, "running", random_seed, created_at)
+        db.insert_run(self._conn, run_id, instance_id, "running", random_seed, created_at)
 
         p = mp.Process(
             target=_run_worker,
@@ -145,7 +144,7 @@ class InstanceManager:
         p.start()
 
         state = RunState(
-            run_id=run_id, instance_id=instance_id, model_name=instance.model_name,
+            run_id=run_id, instance_id=instance_id,
             status="running", random_seed=random_seed, process=p,
             run_dir=run_dir, created_at=created_at,
         )
@@ -181,8 +180,8 @@ class InstanceManager:
         db.delete_run(self._conn, state.run_id)
         instance = self._instances.get(state.instance_id)
         if instance:
-            del instance.runs[state.run_id]
-        del self._runs[state.run_id]
+            instance.runs.pop(state.run_id, None)
+        self._runs.pop(state.run_id, None)
         return state
 
     # internal
@@ -234,7 +233,7 @@ class InstanceManager:
 
             state = RunState(
                 run_id=row["run_id"], instance_id=row["instance_id"],
-                model_name=row["model_name"], status=status,
+                status=status,
                 random_seed=row["random_seed"], process=None,
                 run_dir=run_dir, created_at=row["created_at"], error=error,
             )

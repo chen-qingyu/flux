@@ -20,7 +20,6 @@ def init_db() -> sqlite3.Connection:
         CREATE TABLE IF NOT EXISTS runs (
             run_id       TEXT PRIMARY KEY,
             instance_id  TEXT NOT NULL REFERENCES instances(instance_id) ON DELETE CASCADE,
-            model_name   TEXT NOT NULL,
             status       TEXT NOT NULL DEFAULT 'running',
             error        TEXT,
             random_seed  INTEGER NOT NULL DEFAULT 42,
@@ -59,10 +58,10 @@ def list_instances(conn: sqlite3.Connection) -> list[dict]:
 # runs
 
 def insert_run(conn: sqlite3.Connection, run_id: str, instance_id: str,
-               model_name: str, status: str, random_seed: int, created_at: str):
+               status: str, random_seed: int, created_at: str):
     conn.execute(
-        "INSERT INTO runs (run_id, instance_id, model_name, status, random_seed, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-        (run_id, instance_id, model_name, status, random_seed, created_at))
+        "INSERT INTO runs (run_id, instance_id, status, random_seed, created_at) VALUES (?, ?, ?, ?, ?)",
+        (run_id, instance_id, status, random_seed, created_at))
     conn.commit()
 
 
@@ -91,12 +90,12 @@ def delete_run(conn: sqlite3.Connection, run_id: str):
 def list_runs(conn: sqlite3.Connection, instance_id: str | None = None) -> list[dict]:
     if instance_id:
         rows = conn.execute(
-            "SELECT run_id, instance_id, model_name, status, error, random_seed, created_at FROM runs WHERE instance_id = ? ORDER BY created_at DESC",
+            "SELECT run_id, instance_id, status, error, random_seed, created_at FROM runs WHERE instance_id = ? ORDER BY created_at DESC",
             (instance_id,)).fetchall()
     else:
         rows = conn.execute(
-            "SELECT run_id, instance_id, model_name, status, error, random_seed, created_at FROM runs ORDER BY created_at DESC"
+            "SELECT run_id, instance_id, status, error, random_seed, created_at FROM runs ORDER BY created_at DESC"
         ).fetchall()
-    return [{"run_id": r[0], "instance_id": r[1], "model_name": r[2],
-             "status": r[3], "error": r[4], "random_seed": r[5], "created_at": r[6]} for r in rows]
+    return [{"run_id": r[0], "instance_id": r[1],
+             "status": r[2], "error": r[3], "random_seed": r[4], "created_at": r[5]} for r in rows]
 

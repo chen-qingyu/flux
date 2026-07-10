@@ -32,6 +32,7 @@ class CreateRunRequest(BaseModel):
     model_content: str = Field(min_length=1)
     external_files: dict[str, str] | None = None
     random_seed: int = 42
+    run_name: str | None = None
 
 
 # instances
@@ -90,7 +91,8 @@ def _get_instance_or_404(instance_id: str):
 @app.post("/api/instances/{instance_id}/runs", status_code=201)
 def create_run(instance_id: str, req: CreateRunRequest):
     state = manager.create_run(instance_id, req.model_content,
-                               req.external_files, req.random_seed)
+                               req.external_files, req.random_seed,
+                               req.run_name)
     if state is None:
         raise HTTPException(404, "instance not found")
     instance = _get_instance_or_404(instance_id)
@@ -120,10 +122,8 @@ def get_reports(instance_id: str, run_id: str):
     if not csv_files:
         raise HTTPException(404, "reports not found")
 
-    instance = _get_instance_or_404(state.instance_id)
-
     ts = csv_files[0].stem.rsplit("-", 1)[-1]
-    filename = f"{instance.instance_name}-reports-{ts}.zip"
+    filename = f"{state.run_name}-reports-{ts}.zip"
     encoded = quote(filename)
 
     buf = io.BytesIO()

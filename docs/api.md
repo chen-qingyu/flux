@@ -37,7 +37,7 @@ flux-api 是一个 RESTful HTTP 服务，提供 BPMN 仿真运行的多实例管
 
 | 字段            | 类型           | 必填 | 说明                       |
 | --------------- | -------------- | ---- | -------------------------- |
-| `instance_name` | string (1-128) | 是   | 可重命名，路径字符自动消毒 |
+| `instance_name` | string (1-128) | 是   | 实例名称，路径字符自动消毒 |
 
 **响应 `201`：**
 
@@ -67,7 +67,7 @@ flux-api 是一个 RESTful HTTP 服务，提供 BPMN 仿真运行的多实例管
 
 ### `GET /api/instances/{instance_id}`
 
-返回实例详情 + 所有 runs：
+返回实例详情 + 所有 runs（按时间倒序）：
 
 ```json
 {
@@ -78,14 +78,15 @@ flux-api 是一个 RESTful HTTP 服务，提供 BPMN 仿真运行的多实例管
   "runs": [
     {
       "run_id": "r1r2r3r4r5r6",
-  "instance_id": "a1b2c3d4e5f6",
-  "instance_name": "供应链模型",
-  "status": "completed",
+      "instance_id": "a1b2c3d4e5f6",
+      "instance_name": "供应链模型",
+      "run_name": "供应链模型",
+      "status": "completed",
       "random_seed": 42,
-      "reports": ["供应链模型-entity_events-{ts}.csv", ...],
-  "error": null,
+      "reports": ["供应链模型-entity_events-{ts}.csv", "..."],
+      "error": null,
       "created_at": "..."
-}
+    }
   ]
 }
 ```
@@ -110,15 +111,17 @@ flux-api 是一个 RESTful HTTP 服务，提供 BPMN 仿真运行的多实例管
 {
   "model_content": "<bpmn:definitions ...>",
   "external_files": { "startEventId": "csv内容" },
-  "random_seed": 42
+  "random_seed": 42,
+  "run_name": "供应链模型"
 }
 ```
 
-| 字段             | 类型    | 必填 | 默认值 | 说明                             |
-| ---------------- | ------- | ---- | ------ | -------------------------------- |
-| `model_content`  | string  | 是   | —      | BPMN XML 内容                    |
-| `external_files` | object  | 否   | `null` | key=startEventId, value=CSV 内容 |
-| `random_seed`    | integer | 否   | `42`   | 随机种子                         |
+| 字段             | 类型    | 必填 | 默认值          | 说明                             |
+| ---------------- | ------- | ---- | --------------- | -------------------------------- |
+| `model_content`  | string  | 是   | —               | BPMN XML 内容                    |
+| `external_files` | object  | 否   | `null`          | key=startEventId, value=CSV 内容 |
+| `random_seed`    | integer | 否   | `42`            | 随机种子                         |
+| `run_name`       | string  | 否   | `instance_name` | 运行名称，决定报表文件名前缀     |
 
 **响应 `201`：**
 
@@ -127,6 +130,7 @@ flux-api 是一个 RESTful HTTP 服务，提供 BPMN 仿真运行的多实例管
   "run_id": "r1r2r3r4r5r6",
   "instance_id": "a1b2c3d4e5f6",
   "instance_name": "供应链模型",
+  "run_name": "供应链模型",
   "status": "running",
   "random_seed": 42,
   "reports": [],
@@ -137,7 +141,25 @@ flux-api 是一个 RESTful HTTP 服务，提供 BPMN 仿真运行的多实例管
 
 ### `GET /api/instances/{instance_id}/runs`
 
-返回该实例下所有 runs，按时间倒序。
+返回该实例下所有 runs，按时间倒序：
+
+```json
+{
+  "runs": [
+    {
+      "run_id": "...",
+      "instance_id": "...",
+      "instance_name": "...",
+      "run_name": "...",
+      "status": "completed",
+      "random_seed": 42,
+      "reports": ["..."],
+      "error": null,
+      "created_at": "..."
+    }
+  ]
+}
+```
 
 ### `GET /api/instances/{instance_id}/runs/{run_id}`
 
@@ -152,13 +174,13 @@ flux-api 是一个 RESTful HTTP 服务，提供 BPMN 仿真运行的多实例管
 
 ### `GET /api/instances/{instance_id}/runs/{run_id}/reports`
 
-下载 ZIP `{instance_name}-reports-{ts}.zip`，含 5 个 CSV：
+下载 ZIP `{run_name}-reports-{ts}.zip`，含 5 个 CSV：
 
-- `{instance_name}-entity_events-{ts}.csv`
-- `{instance_name}-task_summary-{ts}.csv`
-- `{instance_name}-task_timeline-{ts}.csv`
-- `{instance_name}-resource_summary-{ts}.csv`
-- `{instance_name}-resource_timeline-{ts}.csv`
+- `{run_name}-entity_events-{ts}.csv`
+- `{run_name}-task_summary-{ts}.csv`
+- `{run_name}-task_timeline-{ts}.csv`
+- `{run_name}-resource_summary-{ts}.csv`
+- `{run_name}-resource_timeline-{ts}.csv`
 
 仅 `completed` 状态的 run 可下载，否则返回 `409`。
 

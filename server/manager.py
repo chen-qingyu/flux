@@ -18,6 +18,7 @@ INSTANCES_ROOT = Path("instances")
 class RunState:
     run_id: str
     instance_id: str
+    run_name: str
     status: str          # running | completed | failed | cancelled
     random_seed: int
     process: mp.Process | None
@@ -37,6 +38,7 @@ class RunState:
             "run_id": self.run_id,
             "instance_id": self.instance_id,
             "instance_name": instance_name,
+            "run_name": self.run_name,
             "status": self.status,
             "random_seed": self.random_seed,
             "reports": self.reports() if self.status == "completed" else [],
@@ -117,12 +119,15 @@ class InstanceManager:
 
     def create_run(self, instance_id: str, model_content: str,
                    external_files: dict[str, str] | None = None,
-                   random_seed: int = 42) -> RunState | None:
+                   random_seed: int = 42,
+                   run_name: str | None = None) -> RunState | None:
         instance = self._instances.get(instance_id)
         if instance is None:
             return None
 
         run_id = uuid.uuid4().hex[:12]
+        if run_name is None:
+            run_name = instance.instance_name
         run_dir = INSTANCES_ROOT / instance_id / "runs" / run_id
         ext_dir = run_dir / "external"
         out_dir = run_dir / "output"
@@ -136,18 +141,18 @@ class InstanceManager:
             for filename, csv_content in external_files.items():
                 (ext_dir / f"{filename}.csv").write_text(csv_content, encoding="utf-8")
 
-        db.insert_run(self._conn, run_id, instance_id, "running", random_seed, created_at)
+        db.insert_run(self._conn, run_id, instance_id, run_name, "running", random_seed, created_at)
 
         parent_conn, child_conn = mp.Pipe()
         p = mp.Process(
             target=_run_worker,
-            args=(instance.instance_name, model_content,
+            args=(run_name, model_content,
                   str(ext_dir), str(out_dir), random_seed, child_conn)
         )
         p.start()
 
         state = RunState(
-            run_id=run_id, instance_id=instance_id,
+            run_id=run_id, instance_id=instance_id, run_name=run_name,
             status="running", random_seed=random_seed, process=p,
             pipe=parent_conn, run_dir=run_dir, created_at=created_at,
         )
@@ -236,6 +241,7 @@ class InstanceManager:
 
             state = RunState(
                 run_id=row["run_id"], instance_id=row["instance_id"],
+                run_name=row["run_name"],
                 status=status,
                 random_seed=row["random_seed"], process=None,
                 run_dir=run_dir, created_at=row["created_at"], error=error,
@@ -253,12 +259,12 @@ class InstanceManager:
                 db.update_run(self._conn, state.run_id, status=state.status, error=state.error)
 
 
-def _run_worker(instance_name: str, model_content: str,
+def _run_worker(run_name: str, model_content: str,
                 external_dir: str, output_dir: str, random_seed: int, conn):
     """模块级函数，确保 multiprocessing 可 pickle。"""
     try:
         import flux
-        flux.run(instance_name, model_content, output_dir, external_dir, random_seed)
+        flux.run(run_name, model_content, output_dir, external_dir, random_seed)
         conn.send(("completed", ""))
     except Exception as e:
         conn.send(("failed", str(e)))

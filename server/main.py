@@ -13,13 +13,9 @@ app = FastAPI(title="flux-api")
 manager = InstanceManager()
 
 
-# ---- request models ----
+# request models
 
 class CreateInstanceRequest(BaseModel):
-    model_name: str = Field(min_length=1, max_length=128)
-
-
-class RenameInstanceRequest(BaseModel):
     model_name: str = Field(min_length=1, max_length=128)
 
 
@@ -29,7 +25,7 @@ class CreateRunRequest(BaseModel):
     random_seed: int = 42
 
 
-# ---- instances ----
+# instances
 
 @app.post("/api/instances", status_code=201)
 def create_instance(req: CreateInstanceRequest):
@@ -51,7 +47,7 @@ def get_instance(instance_id: str):
 
 
 @app.patch("/api/instances/{instance_id}")
-def rename_instance(instance_id: str, req: RenameInstanceRequest):
+def rename_instance(instance_id: str, req: CreateInstanceRequest):
     state = manager.rename_instance(instance_id, req.model_name)
     if state is None:
         raise HTTPException(404, "instance not found")
@@ -66,7 +62,14 @@ def delete_instance(instance_id: str):
     return {"instance_id": instance_id, "status": "deleted"}
 
 
-# ---- runs ----
+# runs
+
+def _get_run_or_404(instance_id: str, run_id: str):
+    state = manager.get_run(run_id)
+    if state is None or state.instance_id != instance_id:
+        raise HTTPException(404, "run not found")
+    return state
+
 
 @app.post("/api/instances/{instance_id}/runs", status_code=201)
 def create_run(instance_id: str, req: CreateRunRequest):
@@ -86,17 +89,12 @@ def list_runs(instance_id: str):
 
 @app.get("/api/instances/{instance_id}/runs/{run_id}")
 def get_run(instance_id: str, run_id: str):
-    state = manager.get_run(run_id)
-    if state is None or state.instance_id != instance_id:
-        raise HTTPException(404, "run not found")
-    return state.to_dict()
+    return _get_run_or_404(instance_id, run_id).to_dict()
 
 
 @app.get("/api/instances/{instance_id}/runs/{run_id}/reports")
 def get_reports(instance_id: str, run_id: str):
-    state = manager.get_run(run_id)
-    if state is None or state.instance_id != instance_id:
-        raise HTTPException(404, "run not found")
+    state = _get_run_or_404(instance_id, run_id)
     output_dir = state.run_dir / "output"
     if not output_dir.exists():
         raise HTTPException(404, "reports not found")
@@ -116,15 +114,13 @@ def get_reports(instance_id: str, run_id: str):
 
 @app.post("/api/instances/{instance_id}/runs/{run_id}/cancel")
 def cancel_run(instance_id: str, run_id: str):
-    state = manager.stop_run(run_id)
-    if state is None or state.instance_id != instance_id:
-        raise HTTPException(404, "run not found")
+    state = _get_run_or_404(instance_id, run_id)
+    state = manager.stop_run(state)
     return {"run_id": state.run_id, "status": state.status}
 
 
 @app.delete("/api/instances/{instance_id}/runs/{run_id}")
 def delete_run(instance_id: str, run_id: str):
-    state = manager.delete_run(run_id)
-    if state is None or state.instance_id != instance_id:
-        raise HTTPException(404, "run not found")
+    state = _get_run_or_404(instance_id, run_id)
+    state = manager.delete_run(state)
     return {"run_id": state.run_id, "status": "deleted"}

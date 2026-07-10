@@ -71,7 +71,7 @@ class InstanceManager:
         self._conn = db.init_db()
         self._load_all()
 
-    # ---- instances ----
+    # instances
 
     def create_instance(self, model_name: str) -> InstanceState:
         model_name = re.sub(r'[\\/:*?"<>|]', '_', model_name)
@@ -112,7 +112,7 @@ class InstanceManager:
         del self._instances[instance_id]
         return state
 
-    # ---- runs ----
+    # runs
 
     def create_run(self, instance_id: str, model_content: str,
                    external_files: dict[str, str] | None = None,
@@ -168,30 +168,24 @@ class InstanceManager:
             self._refresh_run(r)
         return sorted(runs, key=lambda r: r.created_at, reverse=True)
 
-    def stop_run(self, run_id: str) -> RunState | None:
-        state = self._runs.get(run_id)
-        if state is None:
-            return None
+    def stop_run(self, state: RunState) -> RunState:
         self._kill_run(state)
         state.status = "cancelled"
-        db.update_run(self._conn, run_id, status="cancelled")
+        db.update_run(self._conn, state.run_id, status="cancelled")
         shutil.rmtree(state.run_dir, ignore_errors=True)
         return state
 
-    def delete_run(self, run_id: str) -> RunState | None:
-        state = self._runs.get(run_id)
-        if state is None:
-            return None
+    def delete_run(self, state: RunState) -> RunState:
         self._kill_run(state)
         shutil.rmtree(state.run_dir, ignore_errors=True)
-        db.delete_run(self._conn, run_id)
+        db.delete_run(self._conn, state.run_id)
         instance = self._instances.get(state.instance_id)
         if instance:
-            del instance.runs[run_id]
-        del self._runs[run_id]
+            del instance.runs[state.run_id]
+        del self._runs[state.run_id]
         return state
 
-    # ---- internal ----
+    # internal
 
     def _kill_run(self, state: RunState):
         if state.process and state.process.is_alive():
@@ -209,7 +203,7 @@ class InstanceManager:
                 db.update_run(self._conn, state.run_id, status="completed")
             elif text.startswith("failed:"):
                 state.status = "failed"
-                state.error = text[7:]
+                state.error = text.removeprefix("failed:")
                 db.update_run(self._conn, state.run_id, status="failed", error=state.error)
         elif state.process and not state.process.is_alive():
             state.status = "failed"

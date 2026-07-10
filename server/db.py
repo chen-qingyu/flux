@@ -27,11 +27,10 @@ def init_db() -> sqlite3.Connection:
             created_at   TEXT NOT NULL
         );
     """)
-    conn.commit()
     return conn
 
 
-# ---- instances ----
+# instances
 
 def insert_instance(conn: sqlite3.Connection, instance_id: str, model_name: str, created_at: str):
     conn.execute(
@@ -50,15 +49,6 @@ def delete_instance(conn: sqlite3.Connection, instance_id: str):
     conn.commit()
 
 
-def get_instance(conn: sqlite3.Connection, instance_id: str) -> dict | None:
-    row = conn.execute(
-        "SELECT instance_id, model_name, created_at FROM instances WHERE instance_id = ?",
-        (instance_id,)).fetchone()
-    if row is None:
-        return None
-    return {"instance_id": row[0], "model_name": row[1], "created_at": row[2]}
-
-
 def list_instances(conn: sqlite3.Connection) -> list[dict]:
     rows = conn.execute(
         "SELECT instance_id, model_name, created_at FROM instances ORDER BY created_at DESC"
@@ -66,7 +56,7 @@ def list_instances(conn: sqlite3.Connection) -> list[dict]:
     return [{"instance_id": r[0], "model_name": r[1], "created_at": r[2]} for r in rows]
 
 
-# ---- runs ----
+# runs
 
 def insert_run(conn: sqlite3.Connection, run_id: str, instance_id: str,
                model_name: str, status: str, random_seed: int, created_at: str):
@@ -96,16 +86,6 @@ def update_run(conn: sqlite3.Connection, run_id: str,
 def delete_run(conn: sqlite3.Connection, run_id: str):
     conn.execute("DELETE FROM runs WHERE run_id = ?", (run_id,))
     conn.commit()
-
-
-def get_run(conn: sqlite3.Connection, run_id: str) -> dict | None:
-    row = conn.execute(
-        "SELECT run_id, instance_id, model_name, status, error, random_seed, created_at FROM runs WHERE run_id = ?",
-        (run_id,)).fetchone()
-    if row is None:
-        return None
-    return {"run_id": row[0], "instance_id": row[1], "model_name": row[2],
-            "status": row[3], "error": row[4], "random_seed": row[5], "created_at": row[6]}
 
 
 def list_runs(conn: sqlite3.Connection, instance_id: str | None = None) -> list[dict]:

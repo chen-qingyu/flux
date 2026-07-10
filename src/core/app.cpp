@@ -29,7 +29,7 @@ void run(const std::string& model_name,
     {
         const auto model = Parser::parse(model_content, external_dir);
         const auto result = Engine::run(model, random_seed);
-        Reporter::report(output_dir, result.reports, model_name);
+        Reporter::report(std::filesystem::u8path(output_dir), result.reports, model_name);
 
         const auto end_time = std::chrono::steady_clock::now();
         const auto duration = std::chrono::duration<double>(end_time - start_time).count();

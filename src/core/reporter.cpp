@@ -26,7 +26,9 @@ std::string format_fixed(double value, int precision)
 
 std::ofstream open_csv(const std::filesystem::path& dir, const std::string& report_name, const std::string& input_file, const long long& ts)
 {
-    auto path = input_file.empty() ? dir / (report_name + ".csv") : dir / fmt::format("{}-{}-{}.csv", input_file, report_name, ts);
+    auto path = input_file.empty()
+                    ? dir / (report_name + ".csv")
+                    : dir / std::filesystem::u8path(fmt::format("{}-{}-{}.csv", input_file, report_name, ts));
     std::ofstream stream(path, std::ios::binary);
     if (!stream)
     {

@@ -45,7 +45,7 @@ int main(int argc, char** argv)
     }
     catch (const std::exception& exception)
     {
-        spdlog::error("Simulation failed: {}", exception.what());
+        spdlog::error("{}", exception.what());
         return 1;
     }
 

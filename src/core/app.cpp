@@ -1,6 +1,7 @@
 #include "app.hpp"
 
 #include <chrono>
+#include <stdexcept>
 #include <string>
 
 #include <spdlog/spdlog.h>
@@ -24,18 +25,26 @@ void run(const std::string& model_name,
     spdlog::info("Seed: {}", random_seed);
     spdlog::info("Simulation starting...");
 
-    const auto model = Parser::parse(model_content, external_dir);
-    const auto result = Engine::run(model, random_seed);
-    Reporter::report(output_dir, result.reports, model_name);
+    try
+    {
+        const auto model = Parser::parse(model_content, external_dir);
+        const auto result = Engine::run(model, random_seed);
+        Reporter::report(output_dir, result.reports, model_name);
 
-    const auto end_time = std::chrono::steady_clock::now();
-    const auto duration = std::chrono::duration<double>(end_time - start_time).count();
-    spdlog::info("Simulation complete.");
-    spdlog::info("Generated entities: {}", result.generated_entities);
-    spdlog::info("Completed entities: {}", result.completed_entities);
-    spdlog::info("Simulation horizon: {:.3f}", result.simulation_horizon);
-    spdlog::info("Total transport distance: {:.3f}", result.total_transport_distance);
-    spdlog::info("Execution time: {:.3f} s", duration);
+        const auto end_time = std::chrono::steady_clock::now();
+        const auto duration = std::chrono::duration<double>(end_time - start_time).count();
+        spdlog::info("Simulation complete.");
+        spdlog::info("Generated entities: {}", result.generated_entities);
+        spdlog::info("Completed entities: {}", result.completed_entities);
+        spdlog::info("Simulation horizon: {:.3f}", result.simulation_horizon);
+        spdlog::info("Total transport distance: {:.3f}", result.total_transport_distance);
+        spdlog::info("Execution time: {:.3f} s", duration);
+    }
+    catch (const std::exception& e)
+    {
+        spdlog::error("Simulation failed: {}", e.what());
+        throw;
+    }
 }
 
 } // namespace flux

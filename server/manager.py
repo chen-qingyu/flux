@@ -243,6 +243,15 @@ class InstanceManager:
             instance.runs[state.run_id] = state
             self._runs[state.run_id] = state
 
+    def shutdown(self):
+        for state in self._runs.values():
+            self._refresh_run(state)
+            if state.status == "running":
+                self._kill_run(state)
+                state.status = "failed"
+                state.error = "server shutdown"
+                db.update_run(self._conn, state.run_id, status=state.status, error=state.error)
+
 
 def _run_worker(model_name: str, model_content: str,
                 external_dir: str, output_dir: str, random_seed: int, conn):

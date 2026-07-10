@@ -2,6 +2,7 @@
 
 import io
 import zipfile
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
@@ -9,7 +10,14 @@ from pydantic import BaseModel, Field
 
 from .manager import InstanceManager
 
-app = FastAPI(title="flux-api")
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    yield
+    manager.shutdown()
+
+
+app = FastAPI(title="flux-api", lifespan=lifespan)
 manager = InstanceManager()
 
 

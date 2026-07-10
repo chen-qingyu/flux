@@ -87,15 +87,9 @@ def delete_run(conn: sqlite3.Connection, run_id: str):
     conn.commit()
 
 
-def list_runs(conn: sqlite3.Connection, instance_id: str | None = None) -> list[dict]:
-    if instance_id:
-        rows = conn.execute(
-            "SELECT run_id, instance_id, status, error, random_seed, created_at FROM runs WHERE instance_id = ? ORDER BY created_at DESC",
-            (instance_id,)).fetchall()
-    else:
-        rows = conn.execute(
-            "SELECT run_id, instance_id, status, error, random_seed, created_at FROM runs ORDER BY created_at DESC"
-        ).fetchall()
+def list_runs(conn: sqlite3.Connection) -> list[dict]:
+    rows = conn.execute(
+        "SELECT run_id, instance_id, status, error, random_seed, created_at FROM runs ORDER BY created_at DESC"
+    ).fetchall()
     return [{"run_id": r[0], "instance_id": r[1],
              "status": r[2], "error": r[3], "random_seed": r[4], "created_at": r[5]} for r in rows]
-

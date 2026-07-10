@@ -71,30 +71,33 @@ def _get_run_or_404(instance_id: str, run_id: str):
     return state
 
 
+def _get_instance_or_404(instance_id: str):
+    instance = manager.get_instance(instance_id)
+    if instance is None:
+        raise HTTPException(404, "instance not found")
+    return instance
+
+
 @app.post("/api/instances/{instance_id}/runs", status_code=201)
 def create_run(instance_id: str, req: CreateRunRequest):
     state = manager.create_run(instance_id, req.model_content,
                                req.external_files, req.random_seed)
     if state is None:
         raise HTTPException(404, "instance not found")
-    instance = manager.get_instance(instance_id)
-    assert instance is not None
+    instance = _get_instance_or_404(instance_id)
     return state.to_dict(instance.model_name)
 
 
 @app.get("/api/instances/{instance_id}/runs")
 def list_runs(instance_id: str):
-    instance = manager.get_instance(instance_id)
-    if instance is None:
-        raise HTTPException(404, "instance not found")
+    instance = _get_instance_or_404(instance_id)
     return {"runs": [r.to_dict(instance.model_name) for r in manager.list_runs(instance_id)]}
 
 
 @app.get("/api/instances/{instance_id}/runs/{run_id}")
 def get_run(instance_id: str, run_id: str):
     state = _get_run_or_404(instance_id, run_id)
-    instance = manager.get_instance(instance_id)
-    assert instance is not None
+    instance = _get_instance_or_404(instance_id)
     return state.to_dict(instance.model_name)
 
 
@@ -108,8 +111,7 @@ def get_reports(instance_id: str, run_id: str):
     if not csv_files:
         raise HTTPException(404, "reports not found")
 
-    instance = manager.get_instance(state.instance_id)
-    assert instance is not None
+    instance = _get_instance_or_404(state.instance_id)
 
     ts = csv_files[0].stem.rsplit("-", 1)[-1]
     filename = f"{instance.model_name}-reports-{ts}.zip"

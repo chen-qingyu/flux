@@ -152,7 +152,7 @@ flux-api 是一个 RESTful HTTP 服务，提供 BPMN 仿真运行的多实例管
 
 ### `GET /api/instances/{instance_id}/runs/{run_id}/reports`
 
-下载 ZIP，含 5 个 CSV：
+下载 ZIP `{model_name}-reports-{ts}.zip`，含 5 个 CSV：
 
 - `{model_name}-entity_events-{ts}.csv`
 - `{model_name}-task_summary-{ts}.csv`

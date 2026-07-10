@@ -104,21 +104,26 @@ def get_reports(instance_id: str, run_id: str):
     if state.status != "completed":
         raise HTTPException(409, f"run is {state.status}, reports not ready")
     output_dir = state.run_dir / "output"
-    if not output_dir.exists():
+    csv_files = sorted(output_dir.glob("*.csv"))
+    if not csv_files:
         raise HTTPException(404, "reports not found")
 
     instance = manager.get_instance(state.instance_id)
     assert instance is not None
+
+    ts = csv_files[0].stem.rsplit("-", 1)[-1]
+    filename = f"{instance.model_name}-reports-{ts}.zip"
+
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        for path in sorted(output_dir.glob("*.csv")):
+        for path in csv_files:
             zf.write(path, path.name)
     buf.seek(0)
 
     return StreamingResponse(
         buf,
         media_type="application/zip",
-        headers={"Content-Disposition": f"attachment; filename={instance.model_name}-reports.zip"},
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
 
 

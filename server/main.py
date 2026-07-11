@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from urllib.parse import quote
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 from .manager import InstanceManager
@@ -131,6 +131,27 @@ def get_reports(instance_id: str, run_id: str):
         media_type="application/zip",
         headers={"Content-Disposition": f"attachment; filename*=UTF-8''{encoded}"},
     )
+
+
+@app.get("/api/instances/{instance_id}/runs/{run_id}/model")
+def get_model(instance_id: str, run_id: str):
+    state = _get_run_or_404(instance_id, run_id)
+    return Response(
+        (state.run_dir / "model.bpmn").read_text(encoding="utf-8"),
+        media_type="application/xml",
+    )
+
+
+@app.get("/api/instances/{instance_id}/runs/{run_id}/files")
+def get_files(instance_id: str, run_id: str):
+    state = _get_run_or_404(instance_id, run_id)
+    if state.status != "completed":
+        raise HTTPException(409, f"run is {state.status}, files not ready")
+    output_dir = state.run_dir / "output"
+    csv_files = sorted(output_dir.glob("*.csv"))
+    if not csv_files:
+        raise HTTPException(404, "files not found")
+    return {path.name: path.read_text(encoding="utf-8") for path in csv_files}
 
 
 @app.patch("/api/instances/{instance_id}/runs/{run_id}")

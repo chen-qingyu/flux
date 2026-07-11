@@ -23,6 +23,8 @@ flux-api 是一个 RESTful HTTP 服务，提供 BPMN 仿真运行的多实例管
 | `GET`    | `/api/instances/{id}/runs/{rid}`         | 运行状态            |
 | `PATCH`  | `/api/instances/{id}/runs/{rid}`         | 重命名运行          |
 | `GET`    | `/api/instances/{id}/runs/{rid}/reports` | 下载 ZIP            |
+| `GET`    | `/api/instances/{id}/runs/{rid}/model`   | BPMN 源文件         |
+| `GET`    | `/api/instances/{id}/runs/{rid}/files`   | 全部 CSV 数据       |
 | `POST`   | `/api/instances/{id}/runs/{rid}/cancel`  | 终止运行            |
 | `DELETE` | `/api/instances/{id}/runs/{rid}`         | 删除运行            |
 
@@ -172,6 +174,26 @@ flux-api 是一个 RESTful HTTP 服务，提供 BPMN 仿真运行的多实例管
 | `completed` | 完成，`reports` 包含 5 个 CSV 文件名 |
 | `failed`    | 失败，`error` 包含错误信息           |
 | `cancelled` | 已终止                               |
+
+### `GET /api/instances/{instance_id}/runs/{run_id}/model`
+
+返回本次 run 的 BPMN XML 源文件（`application/xml`）。创建 run 时写入，始终可获取。
+
+### `GET /api/instances/{instance_id}/runs/{run_id}/files`
+
+返回全部 CSV 数据文件，JSON 格式 `{文件名: 内容}`：
+
+```json
+{
+  "{run_name}-entity_events-{ts}.csv": "...",
+  "{run_name}-task_summary-{ts}.csv": "...",
+  "{run_name}-task_timeline-{ts}.csv": "...",
+  "{run_name}-resource_summary-{ts}.csv": "...",
+  "{run_name}-resource_timeline-{ts}.csv": "..."
+}
+```
+
+仅 `completed` 状态的 run 可获取，否则返回 `409`。
 
 ### `PATCH /api/instances/{instance_id}/runs/{run_id}`
 

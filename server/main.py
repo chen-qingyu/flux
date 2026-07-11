@@ -35,6 +35,10 @@ class CreateRunRequest(BaseModel):
     run_name: str | None = None
 
 
+class RenameRunRequest(BaseModel):
+    run_name: str = Field(min_length=1, max_length=128)
+
+
 # instances
 
 @app.post("/api/instances", status_code=201)
@@ -137,6 +141,14 @@ def get_reports(instance_id: str, run_id: str):
         media_type="application/zip",
         headers={"Content-Disposition": f"attachment; filename*=UTF-8''{encoded}"},
     )
+
+
+@app.patch("/api/instances/{instance_id}/runs/{run_id}")
+def rename_run(instance_id: str, run_id: str, req: RenameRunRequest):
+    state = _get_run_or_404(instance_id, run_id)
+    state = manager.rename_run(state, req.run_name)
+    instance = _get_instance_or_404(instance_id)
+    return state.to_dict(instance.instance_name)
 
 
 @app.post("/api/instances/{instance_id}/runs/{run_id}/cancel")

@@ -67,7 +67,8 @@ def insert_run(conn: sqlite3.Connection, run_id: str, instance_id: str,
 
 
 def update_run(conn: sqlite3.Connection, run_id: str,
-               status: str | None = None, error: str | None = None):
+               status: str | None = None, error: str | None = None,
+               run_name: str | None = None):
     fields = []
     params = []
     if status is not None:
@@ -76,6 +77,9 @@ def update_run(conn: sqlite3.Connection, run_id: str,
     if error is not None:
         fields.append("error = ?")
         params.append(error)
+    if run_name is not None:
+        fields.append("run_name = ?")
+        params.append(run_name)
     if not fields:
         return
     params.append(run_id)

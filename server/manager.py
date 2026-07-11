@@ -175,6 +175,12 @@ class InstanceManager:
             self._refresh_run(r)
         return sorted(runs, key=lambda r: r.created_at, reverse=True)
 
+    def rename_run(self, state: RunState, run_name: str) -> RunState:
+        run_name = re.sub(r'[\\/:*?"<>|]', '_', run_name)
+        state.run_name = run_name
+        db.update_run(self._conn, state.run_id, run_name=run_name)
+        return state
+
     def stop_run(self, state: RunState) -> RunState:
         self._kill_run(state)
         state.status = "cancelled"

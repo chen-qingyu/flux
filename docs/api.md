@@ -21,6 +21,7 @@ flux-api 是一个 RESTful HTTP 服务，提供 BPMN 仿真运行的多实例管
 | `POST`   | `/api/instances/{id}/runs`               | 创建运行            |
 | `GET`    | `/api/instances/{id}/runs`               | 运行列表            |
 | `GET`    | `/api/instances/{id}/runs/{rid}`         | 运行状态            |
+| `PATCH`  | `/api/instances/{id}/runs/{rid}`         | 重命名运行          |
 | `GET`    | `/api/instances/{id}/runs/{rid}/reports` | 下载 ZIP            |
 | `POST`   | `/api/instances/{id}/runs/{rid}/cancel`  | 终止运行            |
 | `DELETE` | `/api/instances/{id}/runs/{rid}`         | 删除运行            |
@@ -171,6 +172,12 @@ flux-api 是一个 RESTful HTTP 服务，提供 BPMN 仿真运行的多实例管
 | `completed` | 完成，`reports` 包含 5 个 CSV 文件名 |
 | `failed`    | 失败，`error` 包含错误信息           |
 | `cancelled` | 已终止                               |
+
+### `PATCH /api/instances/{instance_id}/runs/{run_id}`
+
+```json
+{ "run_name": "新名称" }
+```
 
 ### `GET /api/instances/{instance_id}/runs/{run_id}/reports`
 

@@ -24,8 +24,8 @@ manager = InstanceManager()
 
 # request models
 
-class CreateInstanceRequest(BaseModel):
-    instance_name: str = Field(min_length=1, max_length=128)
+class NameRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=128)
 
 
 class CreateRunRequest(BaseModel):
@@ -35,15 +35,11 @@ class CreateRunRequest(BaseModel):
     run_name: str | None = None
 
 
-class RenameRunRequest(BaseModel):
-    run_name: str = Field(min_length=1, max_length=128)
-
-
 # instances
 
 @app.post("/api/instances", status_code=201)
-def create_instance(req: CreateInstanceRequest):
-    state = manager.create_instance(req.instance_name)
+def create_instance(req: NameRequest):
+    state = manager.create_instance(req.name)
     return state.to_dict()
 
 
@@ -54,25 +50,21 @@ def list_instances():
 
 @app.get("/api/instances/{instance_id}")
 def get_instance(instance_id: str):
-    state = manager.get_instance(instance_id)
-    if state is None:
-        raise HTTPException(404, "instance not found")
+    state = _get_instance_or_404(instance_id)
     return state.to_dict(include_runs=True)
 
 
 @app.patch("/api/instances/{instance_id}")
-def rename_instance(instance_id: str, req: CreateInstanceRequest):
-    state = manager.rename_instance(instance_id, req.instance_name)
-    if state is None:
-        raise HTTPException(404, "instance not found")
+def rename_instance(instance_id: str, req: NameRequest):
+    state = _get_instance_or_404(instance_id)
+    state = manager.rename_instance(state, req.name)
     return state.to_dict()
 
 
 @app.delete("/api/instances/{instance_id}")
 def delete_instance(instance_id: str):
-    state = manager.delete_instance(instance_id)
-    if state is None:
-        raise HTTPException(404, "instance not found")
+    state = _get_instance_or_404(instance_id)
+    manager.delete_instance(state)
     return {"instance_id": instance_id, "status": "deleted"}
 
 
@@ -94,19 +86,17 @@ def _get_instance_or_404(instance_id: str):
 
 @app.post("/api/instances/{instance_id}/runs", status_code=201)
 def create_run(instance_id: str, req: CreateRunRequest):
-    state = manager.create_run(instance_id, req.model_content,
+    instance = _get_instance_or_404(instance_id)
+    state = manager.create_run(instance, req.model_content,
                                req.external_files, req.random_seed,
                                req.run_name)
-    if state is None:
-        raise HTTPException(404, "instance not found")
-    instance = _get_instance_or_404(instance_id)
     return state.to_dict(instance.instance_name)
 
 
 @app.get("/api/instances/{instance_id}/runs")
 def list_runs(instance_id: str):
     instance = _get_instance_or_404(instance_id)
-    return {"runs": [r.to_dict(instance.instance_name) for r in manager.list_runs(instance_id)]}
+    return {"runs": [r.to_dict(instance.instance_name) for r in manager.list_runs(instance)]}
 
 
 @app.get("/api/instances/{instance_id}/runs/{run_id}")
@@ -144,9 +134,9 @@ def get_reports(instance_id: str, run_id: str):
 
 
 @app.patch("/api/instances/{instance_id}/runs/{run_id}")
-def rename_run(instance_id: str, run_id: str, req: RenameRunRequest):
+def rename_run(instance_id: str, run_id: str, req: NameRequest):
     state = _get_run_or_404(instance_id, run_id)
-    state = manager.rename_run(state, req.run_name)
+    state = manager.rename_run(state, req.name)
     instance = _get_instance_or_404(instance_id)
     return state.to_dict(instance.instance_name)
 

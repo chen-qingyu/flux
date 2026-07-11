@@ -33,12 +33,12 @@ flux-api 是一个 RESTful HTTP 服务，提供 BPMN 仿真运行的多实例管
 **请求：**
 
 ```json
-{ "instance_name": "供应链模型" }
+{ "name": "供应链模型" }
 ```
 
-| 字段            | 类型           | 必填 | 说明                       |
-| --------------- | -------------- | ---- | -------------------------- |
-| `instance_name` | string (1-128) | 是   | 实例名称，路径字符自动消毒 |
+| 字段   | 类型           | 必填 | 说明                       |
+| ------ | -------------- | ---- | -------------------------- |
+| `name` | string (1-128) | 是   | 实例名称，路径字符自动消毒 |
 
 **响应 `201`：**
 
@@ -95,7 +95,7 @@ flux-api 是一个 RESTful HTTP 服务，提供 BPMN 仿真运行的多实例管
 ### `PATCH /api/instances/{instance_id}`
 
 ```json
-{ "instance_name": "新名称" }
+{ "name": "新名称" }
 ```
 
 ### `DELETE /api/instances/{instance_id}`
@@ -176,7 +176,7 @@ flux-api 是一个 RESTful HTTP 服务，提供 BPMN 仿真运行的多实例管
 ### `PATCH /api/instances/{instance_id}/runs/{run_id}`
 
 ```json
-{ "run_name": "新名称" }
+{ "name": "新名称" }
 ```
 
 ### `GET /api/instances/{instance_id}/runs/{run_id}/reports`

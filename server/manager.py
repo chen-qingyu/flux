@@ -93,42 +93,32 @@ class InstanceManager:
     def list_instances(self) -> list[InstanceState]:
         return sorted(self._instances.values(), key=lambda s: s.created_at, reverse=True)
 
-    def rename_instance(self, instance_id: str, instance_name: str) -> InstanceState | None:
-        state = self._instances.get(instance_id)
-        if state is None:
-            return None
+    def rename_instance(self, state: InstanceState, instance_name: str) -> InstanceState:
         instance_name = re.sub(r'[\\/:*?"<>|]', '_', instance_name)
         state.instance_name = instance_name
-        db.update_instance(self._conn, instance_id, instance_name)
+        db.update_instance(self._conn, state.instance_id, instance_name)
         return state
 
-    def delete_instance(self, instance_id: str) -> InstanceState | None:
-        state = self._instances.get(instance_id)
-        if state is None:
-            return None
+    def delete_instance(self, state: InstanceState) -> InstanceState:
         for run in list(state.runs.values()):
             self._kill_run(run)
-        shutil.rmtree(INSTANCES_ROOT / instance_id, ignore_errors=True)
-        db.delete_instance(self._conn, instance_id)
+        shutil.rmtree(INSTANCES_ROOT / state.instance_id, ignore_errors=True)
+        db.delete_instance(self._conn, state.instance_id)
         for run in state.runs.values():
             self._runs.pop(run.run_id, None)
-        del self._instances[instance_id]
+        del self._instances[state.instance_id]
         return state
 
     # runs
 
-    def create_run(self, instance_id: str, model_content: str,
+    def create_run(self, instance: InstanceState, model_content: str,
                    external_files: dict[str, str] | None = None,
                    random_seed: int = 42,
-                   run_name: str | None = None) -> RunState | None:
-        instance = self._instances.get(instance_id)
-        if instance is None:
-            return None
-
+                   run_name: str | None = None) -> RunState:
         run_id = uuid.uuid4().hex[:12]
         if run_name is None:
             run_name = instance.instance_name
-        run_dir = INSTANCES_ROOT / instance_id / "runs" / run_id
+        run_dir = INSTANCES_ROOT / instance.instance_id / "runs" / run_id
         ext_dir = run_dir / "external"
         out_dir = run_dir / "output"
         ext_dir.mkdir(parents=True)
@@ -141,7 +131,7 @@ class InstanceManager:
             for filename, csv_content in external_files.items():
                 (ext_dir / f"{filename}.csv").write_text(csv_content, encoding="utf-8")
 
-        db.insert_run(self._conn, run_id, instance_id, run_name, "running", random_seed, created_at)
+        db.insert_run(self._conn, run_id, instance.instance_id, run_name, "running", random_seed, created_at)
 
         parent_conn, child_conn = mp.Pipe()
         p = mp.Process(
@@ -152,7 +142,7 @@ class InstanceManager:
         p.start()
 
         state = RunState(
-            run_id=run_id, instance_id=instance_id, run_name=run_name,
+            run_id=run_id, instance_id=instance.instance_id, run_name=run_name,
             status="running", random_seed=random_seed, process=p,
             pipe=parent_conn, run_dir=run_dir, created_at=created_at,
         )
@@ -167,10 +157,10 @@ class InstanceManager:
         self._refresh_run(state)
         return state
 
-    def list_runs(self, instance_id: str | None = None) -> list[RunState]:
+    def list_runs(self, instance: InstanceState | None = None) -> list[RunState]:
         runs = self._runs.values()
-        if instance_id:
-            runs = [r for r in runs if r.instance_id == instance_id]
+        if instance:
+            runs = [r for r in runs if r.instance_id == instance.instance_id]
         for r in runs:
             self._refresh_run(r)
         return sorted(runs, key=lambda r: r.created_at, reverse=True)

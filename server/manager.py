@@ -175,9 +175,7 @@ class InstanceManager:
         self._kill_run(state)
         state.status = "cancelled"
         db.update_run(self._conn, state.run_id, status="cancelled")
-        out_dir = state.run_dir / "output"
-        if out_dir.exists():
-            shutil.rmtree(out_dir, ignore_errors=True)
+        shutil.rmtree(state.run_dir / "output", ignore_errors=True)
         return state
 
     def delete_run(self, state: RunState) -> RunState:
